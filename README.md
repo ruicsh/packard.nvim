@@ -1,0 +1,110 @@
+# packard.nvim
+
+A security-first Neovim plugin manager that protects against supply chain attacks by enforcing a configurable cooldown period on new commits and requiring manual user review before any plugin is updated.
+
+## Features
+
+- **Commit Pinning**: Everything is pinned to a specific SHA.
+- **Cooldown Queue**: New commits are held for a configurable period (default 30 days) before they can be applied.
+- **Manual Review**: Approve or reject updates after inspecting changes.
+- **AI Review Engine**: Optional inline AI analysis of diffs to identify security risks and breaking changes.
+- **Parallel Fetch**: Non-blocking `git fetch` for update checking.
+- **Dashboard**: `lazy.nvim`-style UI for managing plugins with real-time status.
+- **Built on `vim.pack`**: Leverages Neovim 0.12+ native plugin management.
+- **Zero External Dependencies**: Self-contained and minimal.
+
+## Requirements
+
+- Neovim **0.12.0** or later.
+- `git` and `curl` installed and in your PATH.
+
+## Installation
+
+Add this to your `init.lua` before calling `setup`:
+
+```lua
+-- Bootstrap packard.nvim
+local packpath = vim.fn.stdpath("data") .. "/site/pack/packard/start/packard.nvim"
+if vim.fn.isdirectory(packpath) == 0 then
+  vim.fn.system({ "git", "clone", "--filter=blob:none", "https://github.com/RuiCostaPT/packard.nvim.git", packpath })
+end
+
+require("packard").setup({
+  defaults = {
+    minimum_release_age = 30, -- global default in days
+  },
+  plugins = {
+    "neovim/nvim-lspconfig",
+    { "tpope/vim-fugitive", minimum_release_age = 7 },
+    -- ... more plugins
+  },
+  -- Optional settings:
+  -- notifications = true,      -- Notify on startup if plugins are ready for review
+  -- self_management = true,    -- Automatically include packard.nvim in the plugin list
+  ai_review = {
+    provider = "openai", -- "openai", "anthropic", "ollama", or "custom"
+    model = "gpt-4o",
+    url = "https://api.openai.com/v1/chat/completions",
+    headers = {
+      ["Authorization"] = "Bearer " .. (os.getenv("OPENAI_API_KEY") or ""),
+    },
+  },
+})
+```
+
+## Usage
+
+- `:Packard` - Open the dashboard.
+- `:Packard check` - Check for new commits (async).
+- `:Packard review` - Open dashboard to the Pending tab.
+- `:Packard summary` - View history of applied updates.
+- `:Packard help` - Show dashboard keybindings.
+- `:checkhealth packard` - Check plugin health and consistency.
+
+### Dashboard Keybindings
+
+- `i`: Switch to **Installed** tab.
+- `p`: Switch to **Pending** tab.
+- `s`: Switch to **Summary** (History) tab.
+- `?`: Show help overlay.
+- `<CR>`: Approve update (on Pending tab).
+- `a`: Trigger/Toggle AI Review inline.
+- `A`: Force re-run AI Review (bypass cache).
+- `r`: Reject and blacklist commit (on Pending tab).
+- `gx`: Open forge compare URL (GitHub/GitLab/Bitbucket).
+- `q` / `<Esc>`: Close dashboard.
+
+## Security Model
+
+1. **Discovery**: `:Packard check` fetches the latest HEAD for each plugin.
+2. **Quarantine**: New commits enter a "Pending" queue with a discovery timestamp.
+3. **Cooldown**: Commits are held in "In Cooldown" until `minimum_release_age` days have passed since discovery.
+4. **Audit**: User reviews the "Eligible" changes (using `gx` for browser diff or `a` for AI analysis).
+5. **Action**: User explicitly approves (installs) or rejects (permanently blacklists) the commit.
+
+## AI Review Configuration
+
+The `ai_review` table supports the following providers:
+
+- **OpenAI**: Requires `url` and `Authorization` header.
+- **Anthropic**: Requires `url` and `x-api-key` header.
+- **Ollama**: Works with local endpoints (e.g., `http://localhost:11434/api/chat`).
+- **Custom**: Flexible for other JSON-based APIs.
+
+### Configuration Fields
+
+| Field           | Description                                         | Default                       |
+| --------------- | --------------------------------------------------- | ----------------------------- |
+| `provider`      | `openai`, `anthropic`, `ollama`, or `custom`        | **Required**                  |
+| `model`         | The model name to use                               | `gpt-4o` (varies by provider) |
+| `url`           | The API endpoint                                    | Provider default              |
+| `headers`       | Table of HTTP headers                               | `{}`                          |
+| `diff_warn_kb`  | KB threshold to ask for confirmation before sending | `50`                          |
+| `diff_error_kb` | KB threshold to block the request                   | `200`                         |
+
+AI reviews are cached locally in `stdpath('state')/packard-ai-cache.json` to prevent redundant API calls.
+
+If a force-push is detected
+(upstream SHA changes but is not a descendant of the discovery commit), `packard` will mark it as an anomaly for extra caution.
+
+No plugin code is updated without your explicit consent.
