@@ -1,0 +1,10 @@
+{
+  "Lua.runtime.version": "LuaJIT",
+  "Lua.workspace.library": [
+    "$VIMRUNTIME/lua"
+  ],
+  "Lua.diagnostics.globals": [
+    "vim"
+  ],
+  "Lua.telemetry.enable": false
+}
