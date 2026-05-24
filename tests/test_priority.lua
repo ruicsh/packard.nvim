@@ -1,0 +1,6 @@
+local buf = vim.api.nvim_create_buf(false, true)
+local ns = vim.api.nvim_create_namespace("test")
+local ok, err = pcall(vim.api.nvim_buf_set_extmark, buf, ns, 0, 0, { priority = -1 })
+print("Priority -1: " .. tostring(ok) .. (not ok and (" Error: " .. tostring(err)) or ""))
+local ok2, err2 = pcall(vim.api.nvim_buf_set_extmark, buf, ns, 0, 0, { priority = 0 })
+print("Priority 0: " .. tostring(ok2) .. (not ok2 and (" Error: " .. tostring(err2)) or ""))
