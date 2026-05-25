@@ -4,19 +4,23 @@ Security-first Neovim plugin manager (cooldown + manual review on `vim.pack`).
 
 ## Commands
 
-| Command | What it does |
-|---------|-------------|
-| `make test` | Run all tests (`./scripts/run_tests.sh`) |
-| `make format` | `stylua .` |
-| `make lint` | `stylua --check .` + `lua-language-server --check .` |
-| `make check` | `lua-language-server --check .` only |
+| Command       | What it does                                         |
+| ------------- | ---------------------------------------------------- |
+| `make test`   | Run all tests (`./scripts/run_tests.sh`)             |
+| `make format` | `stylua .`                                           |
+| `make lint`   | `stylua --check .` + `lua-language-server --check .` |
+| `make check`  | `lua-language-server --check .` only                 |
+
+After code changes, run `make check` to verify no new `lua-language-server` diagnostics.
 
 **Run a single test file:**
+
 ```
 nvim --clean -u NONE --cmd "set rtp+=. \| set rtp+=./lua" -l tests/parser_spec.lua
 ```
 
 **Run specific files via env var:**
+
 ```
 TESTS="tests/parser_spec.lua tests/state_spec.lua" make test
 ```
@@ -47,6 +51,7 @@ TESTS="tests/parser_spec.lua tests/state_spec.lua" make test
 - **Spec format**: lazy.nvim-compatible (`"owner/repo"` or `{ "owner/repo", … }`) with packard-specific field `minimum_release_age`.
 - **Self-management**: packard auto-prepends itself to the plugin list unless `self_management = false`.
 - **Concurrent safety**: `_is_checking` flag prevents overlapping `:Packard check` runs.
+- **Ignore `harper_ls` diagnostics** on Markdown files (README, AGENTS, etc.) — prose linting suggestions, not bugs or required fixes.
 
 ## Reference docs
 
