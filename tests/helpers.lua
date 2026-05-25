@@ -59,4 +59,33 @@ function M.mock(mod, fn_name, stub)
   end
 end
 
+---Create a temp directory with given files
+---@param files table<string, string> filename -> content
+---@return string path, function cleanup
+function M.with_temp_dir(files)
+  local temp_dir = vim.fn.tempname()
+  --[[@diagnostic disable-next-line: redundant-parameter]]
+  vim.fn.mkdir(temp_dir, "p")
+
+  for name, content in pairs(files) do
+    local path = vim.fs.joinpath(temp_dir, name)
+    local dir = vim.fn.fnamemodify(path, ":h")
+    if vim.fn.isdirectory(dir) == 0 then
+      --[[@diagnostic disable-next-line: redundant-parameter]]
+      vim.fn.mkdir(dir, "p")
+    end
+    local f = io.open(path, "w")
+    if f then
+      f:write(content)
+      f:close()
+    end
+  end
+
+  local cleanup = function()
+    vim.fn.delete(temp_dir, "rf")
+  end
+
+  return temp_dir, cleanup
+end
+
 return M
