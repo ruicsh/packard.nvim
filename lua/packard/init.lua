@@ -190,7 +190,8 @@ function M.setup(opts)
 
   local highlight_defaults = {
     PackardHeader = { link = "Normal" },
-    PackardH2 = { link = "Normal" },
+    PackardH2 = { link = "Bold" },
+    PackardComment = { link = "Comment" },
     PackardCommit = { link = "Normal" },
     PackardStatusOk = { link = "Normal" },
     PackardStatusWarn = { link = "Normal" },

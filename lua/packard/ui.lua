@@ -134,7 +134,8 @@ function UI.setup_highlights(user_highlights)
 
   local defaults = {
     PackardHeader = { link = "Normal" },
-    PackardH2 = { link = "Normal" },
+    PackardH2 = { link = "Bold" },
+    PackardComment = { link = "Comment" },
     PackardButton = { link = "CursorLine" },
     PackardButtonActive = { link = "Visual" },
     PackardPluginName = { link = "Normal" },
@@ -387,9 +388,24 @@ function UI.apply_highlights()
 
   for i, line in ipairs(lines) do
     if line:match("^  %a") then -- Section headers (Installed (8), etc.)
-      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 2, {
-        hl_group = "PackardH2",
-      })
+      local count_start = line:find(" %(", 3)
+      if count_start then
+        -- Title: bold
+        vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 2, {
+          end_col = count_start,
+          hl_group = "PackardH2",
+        })
+        -- Count: comment-style
+        vim.api.nvim_buf_set_extmark(buf, ns, i - 1, count_start, {
+          end_col = #line,
+          hl_group = "PackardComment",
+        })
+      else
+        -- Fallback (e.g. KEYBINDINGS: in help tab)
+        vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 2, {
+          hl_group = "PackardH2",
+        })
+      end
     elseif line:match("^    [●⚠⏳]") then -- Plugin rows
       -- 1. Icon
       local icon_match = line:match("^    ([●⚠⏳][^ ]*)")
@@ -563,7 +579,7 @@ function UI.render_installed(lines)
     if #plugins == 0 then
       return
     end
-    table.insert(lines, string.format("  %s (%d)", title:upper(), #plugins))
+    table.insert(lines, string.format("  %s (%d)", title, #plugins))
     for _, plugin in ipairs(plugins) do
       local commit = Lockfile.get_installed_commit(plugin.name) or "unknown"
       local branch = plugin.branch or "(default)"
@@ -629,7 +645,7 @@ function UI.render_pending(lines)
     end
     table.sort(keys)
 
-    table.insert(lines, string.format("  %s (%d)", title:upper(), #keys))
+    table.insert(lines, string.format("  %s (%d)", title, #keys))
     for _, owner_repo in ipairs(keys) do
       local entry = items[owner_repo]
       local plugin_name = owner_repo:match("/([^/]+)$")
