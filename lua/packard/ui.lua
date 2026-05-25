@@ -3,6 +3,7 @@ local State = require("packard.state")
 local Cooldown = require("packard.cooldown")
 local Lockfile = require("packard.lockfile")
 local URL = require("packard.url")
+local Orphans = require("packard.orphans")
 local ns = vim.api.nvim_create_namespace("packard")
 
 UI.win = nil
@@ -17,6 +18,7 @@ UI.expanded_row = nil -- owner_repo of expanded row
 UI.expanded_type = nil -- "ai" or "log"
 UI._cursor_repo = nil -- owner_repo of plugin under cursor
 UI.progress = { current = 0, total = 0, message = "" }
+UI.selected_orphans = {} -- Map owner_repo/dir_name to boolean
 UI._render_scheduled = false
 UI.spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 UI.spinner_idx = 1
@@ -196,6 +198,13 @@ function UI.setup_keymaps()
       UI._cursor_repo = nil
       UI.render()
     end,
+    ["c"] = function()
+      UI.tab = "clean"
+      UI.expanded_row = nil
+      UI.expanded_type = nil
+      UI._cursor_repo = nil
+      UI.render()
+    end,
     ["q"] = function()
       UI.close()
     end,
@@ -208,6 +217,12 @@ function UI.setup_keymaps()
     end,
     ["<CR>"] = function()
       UI.handle_log()
+    end,
+    ["<Space>"] = function()
+      UI.handle_toggle_selection()
+    end,
+    ["x"] = function()
+      UI.handle_toggle_selection()
     end,
     -- Standard navigation handled by buffer defaults
     ["A"] = function()
@@ -272,6 +287,7 @@ function UI._do_render()
     { id = "installed", label = "Installed", key = "i" },
     { id = "pending", label = "Pending", key = "p" },
     { id = "summary", label = "Summary", key = "s" },
+    { id = "clean", label = "Clean", key = "c" },
     { id = "help", label = "Help", key = "?" },
   }
 
@@ -314,6 +330,8 @@ function UI._do_render()
     UI.render_pending(lines)
   elseif UI.tab == "summary" then
     UI.render_summary(lines)
+  elseif UI.tab == "clean" then
+    UI.render_clean(lines)
   elseif UI.tab == "help" then
     UI.render_help(lines)
   end
@@ -566,20 +584,27 @@ function UI.apply_highlights(lines)
           end
         end
       end
-    elseif line:match("^    [●⚠⏳]") then -- Plugin rows
+    elseif line:match("^    [●⚠⏳☒☐]") then -- Plugin rows
       -- 1. Icon
       local icon_match = line:match("^    (%S+)")
       if icon_match then
         local icon_len = #icon_match
+        local hl_icon = "PackardStatusOk"
+        if line:match("⚠") then
+          hl_icon = "PackardStatusError"
+        elseif line:match("☒") or line:match("☐") then
+          hl_icon = "PackardComment"
+        end
+
         vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 4, {
           end_col = 4 + icon_len,
-          hl_group = line:match("⚠") and "PackardStatusError" or "PackardStatusOk",
+          hl_group = hl_icon,
         })
 
         -- 2. Plugin Name
         local name_start = 4 + icon_len + 1
         -- Use a pattern to find the first double-space or multiple spaces that separate name from commit
-        local name_end = line:find("  ", name_start)
+        local name_end = line:find("  ", name_start) or (#line + 1)
         if name_end then
           local owner_repo = UI.line_map[i]
           local is_selected = (owner_repo and owner_repo == UI._cursor_repo)
@@ -922,6 +947,37 @@ function UI.render_summary(lines)
   end
 end
 
+function UI.render_clean(lines)
+  local s = State.read()
+  local results = Orphans.find_orphans(UI.plugins, s)
+
+  if #results.dirs == 0 and #results.state == 0 then
+    table.insert(lines, "  No orphans found. Your spec is in sync with your system.")
+    return
+  end
+
+  local function render_section(title, items, is_state)
+    if #items == 0 then
+      return
+    end
+    table.insert(lines, string.format("  %s (%d)", title, #items))
+    for _, item in ipairs(items) do
+      local is_selected = UI.selected_orphans[item]
+      local icon = is_selected and "☒" or "☐"
+      table.insert(lines, string.format("    %s %s", icon, item))
+      UI.line_map[#lines] = item
+    end
+    table.insert(lines, "")
+  end
+
+  render_section("Orphaned Directories", results.dirs, false)
+  render_section("Stale State Metadata", results.state, true)
+
+  if next(UI.selected_orphans) then
+    table.insert(lines, "  Press X to clean selected orphans.")
+  end
+end
+
 function UI._format_age(timestamp)
   -- Parse ISO 8601 UTC timestamp
   -- Format: 2026-05-24 T 12:00:00Z
@@ -1016,6 +1072,10 @@ function UI.handle_approve()
 end
 
 function UI.handle_reject()
+  if UI.tab == "clean" then
+    UI.handle_clean_orphans()
+    return
+  end
   if UI.tab ~= "pending" then
     return
   end
@@ -1043,6 +1103,124 @@ function UI.handle_reject()
   State.dequeue(owner_repo)
   UI.render()
   print("packard: rejected and blacklisted " .. entry.commit:sub(1, 7))
+end
+
+function UI.handle_toggle_selection()
+  if UI.tab ~= "clean" then
+    return
+  end
+  local line = vim.api.nvim_win_get_cursor(UI.win)[1]
+  local item = UI.line_map[line]
+  if not item then
+    return
+  end
+
+  if UI.selected_orphans[item] then
+    UI.selected_orphans[item] = nil
+  else
+    UI.selected_orphans[item] = true
+  end
+  UI.render()
+end
+
+function UI.handle_clean_orphans()
+  if UI.tab ~= "clean" then
+    return
+  end
+
+  local selected = {}
+  for item, _ in pairs(UI.selected_orphans) do
+    table.insert(selected, item)
+  end
+
+  if #selected == 0 then
+    print("packard: no orphans selected")
+    return
+  end
+
+  table.sort(selected)
+  --[[@diagnostic disable-next-line: redundant-parameter]]
+  local confirmed = vim.fn.confirm(string.format("Delete %d selected orphans?", #selected), "&Yes\n&No")
+  if confirmed ~= 1 then
+    return
+  end
+
+  local s = State.read()
+  local results = Orphans.find_orphans(UI.plugins, s)
+  local processed_count = 0
+
+  for _, item in ipairs(selected) do
+    local cleaned = false
+    -- Check if it's a directory orphan
+    local is_dir = false
+    for _, d in ipairs(results.dirs) do
+      if d == item then
+        is_dir = true
+        break
+      end
+    end
+
+    if is_dir then
+      cleaned = true
+      -- Plugin name is the item
+      print("packard: cleaning directory " .. item .. "...")
+      if vim.pack and vim.pack.del then
+        local ok, err = pcall(vim.pack.del, { item })
+        if not ok then
+          print("packard: failed to delete " .. item .. ": " .. tostring(err))
+        end
+      else
+        -- Fallback for older nvim or if vim.pack.del is missing
+        local path = require("packard.utils").get_plugin_path(item)
+        vim.fn.delete(path, "rf")
+      end
+    end
+
+    -- Always try to purge state metadata if owner_repo matches
+    local is_state = false
+    for _, sr in ipairs(results.state) do
+      if sr == item then
+        is_state = true
+        break
+      end
+    end
+
+    if is_state then
+      cleaned = true
+      print("packard: purging metadata for " .. item .. "...")
+      State.purge_stale_metadata(item)
+    end
+
+    -- If it's a directory orphan, it might have state entries too
+    if is_dir and not is_state then
+      -- Try to find owner_repo in state that matches this dir name
+      for owner_repo, _ in pairs(s.queue or {}) do
+        if owner_repo:match("/([^/]+)$") == item then
+          State.purge_stale_metadata(owner_repo)
+        end
+      end
+      for owner_repo, _ in pairs(s.blacklist or {}) do
+        if owner_repo:match("/([^/]+)$") == item then
+          State.purge_stale_metadata(owner_repo)
+        end
+      end
+    end
+
+    if cleaned then
+      processed_count = processed_count + 1
+    end
+    UI.selected_orphans[item] = nil
+  end
+
+  Lockfile.invalidate()
+  UI.render()
+
+  local skipped = #selected - processed_count
+  if skipped > 0 then
+    print(string.format("packard: cleanup complete (%d processed, %d skipped)", processed_count, skipped))
+  else
+    print("packard: cleanup complete")
+  end
 end
 
 function UI.handle_compare()
@@ -1282,12 +1460,14 @@ function UI.render_help(lines)
   table.insert(lines, "    i          Switch to Installed tab")
   table.insert(lines, "    p          Switch to Pending tab")
   table.insert(lines, "    s          Switch to Summary tab")
+  table.insert(lines, "    c          Switch to Clean tab")
   table.insert(lines, "    ?          Show this help")
   table.insert(lines, "")
   table.insert(lines, "    j/k        Navigate list")
   table.insert(lines, "    <CR>       Show commit log (installed->pending / recent)")
+  table.insert(lines, "    <Space>/x  Toggle selection (Clean tab)")
   table.insert(lines, "    A          Approve pending update")
-  table.insert(lines, "    X          Reject pending update (blacklist)")
+  table.insert(lines, "    X          Reject pending update / Clean selected orphans")
   table.insert(lines, "    gx         Compare changes in browser")
   table.insert(lines, "    r          Toggle AI Review (inline)")
   table.insert(lines, "    R          Force re-run AI Review")

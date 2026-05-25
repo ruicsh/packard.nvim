@@ -136,6 +136,8 @@ function M._register_commands()
       UI.open(M.plugins, "pending", M._is_offline)
     elseif sub == "summary" then
       UI.open(M.plugins, "summary", M._is_offline)
+    elseif sub == "clean" then
+      UI.open(M.plugins, "clean", M._is_offline)
     elseif sub == "help" then
       UI.open(M.plugins, "help", M._is_offline)
     else
@@ -147,7 +149,7 @@ function M._register_commands()
       local l = vim.split(line, "%s+")
       local n = #l
       if n == 2 then
-        local candidates = { "check", "review", "summary", "help" }
+        local candidates = { "check", "review", "summary", "clean", "help" }
         local res = {}
         for _, c in ipairs(candidates) do
           if c:sub(1, #l[2]) == l[2] then

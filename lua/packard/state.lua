@@ -267,4 +267,25 @@ function State.log_update(owner_repo, from, to, timestamp)
   State.write()
 end
 
+---Purge metadata for an orphaned plugin
+---@param owner_repo string
+function State.purge_stale_metadata(owner_repo)
+  local s = State.read()
+  local changed = false
+
+  if s.queue[owner_repo] then
+    s.queue[owner_repo] = nil
+    changed = true
+  end
+
+  if s.blacklist[owner_repo] then
+    s.blacklist[owner_repo] = nil
+    changed = true
+  end
+
+  if changed then
+    State.write()
+  end
+end
+
 return State
