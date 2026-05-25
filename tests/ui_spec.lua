@@ -137,11 +137,66 @@ Helpers.describe("UI Dashboard", function()
       end
     end
     Helpers.expect(found_spinner).to_be_truthy()
-
     -- Cleanup
     Cooldown.get_status = old_get_status
     UI.ai_results = {}
     UI.expanded_row = nil
+    UI.close()
+  end)
+
+  Helpers.it("highlights selected plugin name", function()
+    local plugins = { { name = "foo/bar", owner_repo = "foo/bar" }, { name = "baz/qux", owner_repo = "baz/qux" } }
+    UI.open(plugins, "installed")
+    UI._do_render()
+
+    -- Find the line for "foo/bar"
+    local line_idx = nil
+    for i, owner_repo in pairs(UI.line_map) do
+      if owner_repo == "foo/bar" then
+        line_idx = i
+        break
+      end
+    end
+    Helpers.expect(line_idx).to_be_truthy()
+
+    -- Simulate cursor on that line
+    UI._cursor_repo = "foo/bar"
+    UI.apply_highlights()
+
+    local packard_ns = vim.api.nvim_create_namespace("packard")
+    local extmarks = vim.api.nvim_buf_get_extmarks(UI.buf, packard_ns, 0, -1, { details = true })
+    local found_selected = false
+    for _, em in ipairs(extmarks) do
+      local row = em[2]
+      local details = em[4]
+      if row == line_idx - 1 and details.hl_group == "PackardPluginNameSelected" then
+        found_selected = true
+        break
+      end
+    end
+    Helpers.expect(found_selected).to_be_truthy()
+
+    -- Move cursor away
+    UI._cursor_repo = "baz/qux"
+    UI.apply_highlights()
+
+    extmarks = vim.api.nvim_buf_get_extmarks(UI.buf, packard_ns, 0, -1, { details = true })
+    found_selected = false
+    local found_normal = false
+    for _, em in ipairs(extmarks) do
+      local row = em[2]
+      local details = em[4]
+      if row == line_idx - 1 then
+        if details.hl_group == "PackardPluginNameSelected" then
+          found_selected = true
+        elseif details.hl_group == "PackardPluginName" then
+          found_normal = true
+        end
+      end
+    end
+    Helpers.expect(found_selected).to_be(false)
+    Helpers.expect(found_normal).to_be_truthy()
+
     UI.close()
   end)
 end)

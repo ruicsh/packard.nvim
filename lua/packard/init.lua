@@ -191,9 +191,6 @@ function M.setup(opts)
   local highlight_defaults = {
     PackardHeader = { link = "Normal" },
     PackardH2 = { link = "Normal" },
-    PackardButton = { link = "CursorLine" },
-    PackardButtonActive = { link = "Visual" },
-    PackardPluginName = { link = "Normal" },
     PackardCommit = { link = "Normal" },
     PackardStatusOk = { link = "Normal" },
     PackardStatusWarn = { link = "Normal" },
@@ -221,7 +218,7 @@ function M.setup(opts)
     defaults = defaults,
     plugins = opts.plugins,
     ai_review = opts.ai_review,
-    highlights = highlights,
+    highlights = opts.highlights,
   }
 
   -- T-1.3.2: Include packard itself if not disabled

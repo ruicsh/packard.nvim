@@ -14,6 +14,7 @@ UI.is_offline = false
 UI.config = nil -- Store config from init
 UI.ai_results = {} -- Map owner_repo to { state = "loading"|"result"|"error", data = ... }
 UI.expanded_row = nil -- owner_repo of expanded row
+UI._cursor_repo = nil -- owner_repo of plugin under cursor
 UI.progress = { current = 0, total = 0, message = "" }
 UI._render_scheduled = false
 UI.spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
@@ -63,6 +64,7 @@ function UI.open(plugins, initial_tab, is_offline)
   })
 
   -- T-4.1.3: Window options
+  vim.api.nvim_set_option_value("cursorline", false, { win = UI.win })
 
   -- T-4.1.6: Keymaps
   UI.setup_keymaps()
@@ -71,15 +73,27 @@ function UI.open(plugins, initial_tab, is_offline)
   vim.api.nvim_create_autocmd("CursorMoved", {
     buffer = UI.buf,
     callback = function()
-      if not UI.expanded_row or UI.tab ~= "pending" then
-        return
-      end
       local line = vim.api.nvim_win_get_cursor(UI.win)[1]
       local owner_repo = UI.line_map[line]
+
+      local changed = false
+
+      -- Track cursor plugin name
+      if owner_repo ~= UI._cursor_repo then
+        UI._cursor_repo = owner_repo
+        changed = true
+      end
+
       -- If the current line doesn't map to the expanded row AND it's not part of the expansion lines
       -- (expansion lines don't have a mapping in line_map)
-      if owner_repo and owner_repo ~= UI.expanded_row then
-        UI.expanded_row = nil
+      if UI.expanded_row and UI.tab == "pending" then
+        if owner_repo and owner_repo ~= UI.expanded_row then
+          UI.expanded_row = nil
+          changed = true
+        end
+      end
+
+      if changed then
         UI.render()
       end
     end,
@@ -113,33 +127,35 @@ function UI.open(plugins, initial_tab, is_offline)
   UI.render()
 end
 
-function UI.setup_highlights(config)
-  if config then
-    UI._highlight_config = config
+function UI.setup_highlights(user_highlights)
+  if user_highlights then
+    UI._highlight_config = user_highlights
   end
 
-  local highlights = UI._highlight_config
-    or {
-      PackardHeader = { link = "Normal" },
-      PackardH2 = { link = "Normal" },
-      PackardButton = { link = "CursorLine" },
-      PackardButtonActive = { link = "Visual" },
-      PackardPluginName = { link = "Normal" },
-      PackardCommit = { link = "Normal" },
-      PackardStatusOk = { link = "Normal" },
-      PackardStatusWarn = { link = "Normal" },
-      PackardStatusError = { link = "Normal" },
-      PackardEligible = { link = "Normal" },
-      PackardCooldown = { link = "Normal" },
-      PackardKeyHint = { link = "@punctuation.special" },
-      PackardDivider = { link = "Normal" },
-      PackardProgressDone = { link = "Normal" },
-      PackardProgressTodo = { link = "Normal" },
-      PackardAIRiskLow = { link = "Normal" },
-      PackardAIRiskMedium = { link = "Normal" },
-      PackardAIRiskHigh = { link = "Normal" },
-      PackardAIBorder = { link = "Normal" },
-    }
+  local defaults = {
+    PackardHeader = { link = "Normal" },
+    PackardH2 = { link = "Normal" },
+    PackardButton = { link = "CursorLine" },
+    PackardButtonActive = { link = "Visual" },
+    PackardPluginName = { link = "Normal" },
+    PackardPluginNameSelected = { link = "Visual" },
+    PackardCommit = { link = "Normal" },
+    PackardStatusOk = { link = "Normal" },
+    PackardStatusWarn = { link = "Normal" },
+    PackardStatusError = { link = "Normal" },
+    PackardEligible = { link = "Normal" },
+    PackardCooldown = { link = "Normal" },
+    PackardKeyHint = { link = "@punctuation.special" },
+    PackardDivider = { link = "Normal" },
+    PackardProgressDone = { link = "Normal" },
+    PackardProgressTodo = { link = "Normal" },
+    PackardAIRiskLow = { link = "Normal" },
+    PackardAIRiskMedium = { link = "Normal" },
+    PackardAIRiskHigh = { link = "Normal" },
+    PackardAIBorder = { link = "Normal" },
+  }
+
+  local highlights = vim.tbl_deep_extend("force", defaults, UI._highlight_config or {})
 
   for name, opts in pairs(highlights) do
     opts.default = true
@@ -163,16 +179,19 @@ function UI.setup_keymaps()
     ["i"] = function()
       UI.tab = "installed"
       UI.expanded_row = nil
+      UI._cursor_repo = nil
       UI.render()
     end,
     ["p"] = function()
       UI.tab = "pending"
       UI.expanded_row = nil
+      UI._cursor_repo = nil
       UI.render()
     end,
     ["s"] = function()
       UI.tab = "summary"
       UI.expanded_row = nil
+      UI._cursor_repo = nil
       UI.render()
     end,
     ["q"] = function()
@@ -216,6 +235,8 @@ function UI.close()
   end
   UI.win = nil
   UI.buf = nil
+  UI.expanded_row = nil
+  UI._cursor_repo = nil
   UI._stop_spinner()
 end
 
@@ -313,6 +334,13 @@ function UI._do_render()
   vim.api.nvim_buf_set_lines(UI.buf, 0, -1, false, lines)
   vim.api.nvim_set_option_value("modifiable", false, { buf = UI.buf })
 
+  -- Update cursor repo before highlighting
+  if UI.win and vim.api.nvim_win_is_valid(UI.win) then
+    local cursor = vim.api.nvim_win_get_cursor(UI.win)
+    local line = cursor[1]
+    UI._cursor_repo = UI.line_map[line]
+  end
+
   UI.apply_highlights()
 
   vim.api.nvim_win_set_config(
@@ -374,11 +402,17 @@ function UI.apply_highlights()
 
         -- 2. Plugin Name
         local name_start = 4 + icon_len + 1
+        -- Use a pattern to find the first double-space or multiple spaces that separate name from commit
         local name_end = line:find("  ", name_start)
         if name_end then
+          local owner_repo = UI.line_map[i]
+          local is_selected = (owner_repo and owner_repo == UI._cursor_repo)
+          local hl_name = is_selected and "PackardPluginNameSelected" or "PackardPluginName"
+
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, name_start, {
             end_col = name_end,
-            hl_group = "PackardPluginName",
+            hl_group = hl_name,
+            priority = is_selected and 200 or 100,
           })
 
           -- 3. Commit (find next word)
