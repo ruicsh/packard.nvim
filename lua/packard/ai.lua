@@ -26,6 +26,91 @@ Diff:
 ```
 ]]
 
+---Detect and report API-level errors in the response
+---@param decoded table
+---@return boolean true if an error was detected (caller should return nil, err)
+---@return string|nil error message
+local function detect_api_error(decoded)
+  if decoded.error then
+    if type(decoded.error) == "string" then
+      return true, "API error: " .. decoded.error
+    end
+    local msg = decoded.error.message or decoded.error.code or tostring(decoded.error)
+    return true, "API error: " .. msg
+  end
+  return false
+end
+
+---Try to extract content from a decoded API response using common paths.
+---Returns nil if nothing found.
+---@param decoded table
+---@return string|table|nil
+local function extract_content(decoded)
+  -- Standard Chat Completions: choices[0].message.content
+  if decoded.choices and decoded.choices[1] and decoded.choices[1].message then
+    if decoded.choices[1].message.content ~= nil then
+      return decoded.choices[1].message.content
+    end
+  end
+  -- Older Completions API: choices[0].text
+  if decoded.choices and decoded.choices[1] and decoded.choices[1].text then
+    return decoded.choices[1].text
+  end
+  -- Streaming delta: choices[0].delta.content
+  if decoded.choices and decoded.choices[1] and decoded.choices[1].delta then
+    if decoded.choices[1].delta.content ~= nil then
+      return decoded.choices[1].delta.content
+    end
+  end
+  -- Ollama chat: message.content
+  if decoded.message and decoded.message.content ~= nil then
+    return decoded.message.content
+  end
+  -- Anthropic / content as array of {type, text}
+  if type(decoded.content) == "table" then
+    if decoded.content[1] and decoded.content[1].text then
+      return decoded.content[1].text
+    end
+    -- If it's a table but not the array-of-parts format, return as-is
+    return decoded.content
+  end
+  -- Content as bare string
+  if type(decoded.content) == "string" then
+    return decoded.content
+  end
+  -- Simple Ollama generate: response
+  if decoded.response then
+    return decoded.response
+  end
+  -- Generic text field
+  if decoded.text then
+    return decoded.text
+  end
+  -- Responses API: output[0].content[0].text
+  if type(decoded.output) == "table" and decoded.output[1] and decoded.output[1].content then
+    if type(decoded.output[1].content) == "table" and decoded.output[1].content[1] and decoded.output[1].content[1].text then
+      return decoded.output[1].content[1].text
+    end
+    if type(decoded.output[1].content) == "string" then
+      return decoded.output[1].content
+    end
+  end
+
+  return nil
+end
+
+---Format top-level keys from a JSON response for diagnostic messages
+---@param decoded table
+---@return string
+local function format_response_keys(decoded)
+  local keys = {}
+  for k, _ in pairs(decoded) do
+    table.insert(keys, tostring(k))
+  end
+  table.sort(keys)
+  return table.concat(keys, ", ")
+end
+
 ---Parse LLM response based on provider
 ---@param provider string
 ---@param raw_body string
@@ -36,35 +121,49 @@ local function parse_llm_response(provider, raw_body)
     return nil, "AI response was not valid JSON"
   end
 
+  -- 1. Detect API-level errors (rate limits, auth failures, etc.)
+  local is_error, err_msg = detect_api_error(decoded)
+  if is_error then
+    return nil, err_msg
+  end
+
+  -- 2. Extract content using provider-specific logic + generic fallback
   local content
-  if provider == "openai" or provider == "ollama" then
-    -- Ollama can use OpenAI compatible format or its own
-    if decoded.choices and decoded.choices[1] and decoded.choices[1].message then
-      content = decoded.choices[1].message.content
-    elseif decoded.message and decoded.message.content then
-      content = decoded.message.content
-    elseif decoded.response then -- Simple Ollama generate
-      content = decoded.response
+
+  -- Provider-specific path: Anthropic uses content[1].text but extract_content
+  -- already handles that generically. Only custom provider gets the raw fallback.
+  if provider == "custom" then
+    -- For custom provider, try all common paths then fall back to raw body
+    content = extract_content(decoded)
+    if not content then
+      content = raw_body
     end
-  elseif provider == "anthropic" then
-    if decoded.content and decoded.content[1] and decoded.content[1].text then
-      content = decoded.content[1].text
-    end
-  elseif provider == "custom" then
-    -- Try to find content in a generic way
-    content = decoded.content or decoded.response or decoded.text or raw_body
+  else
+    content = extract_content(decoded)
   end
 
   if not content then
-    return nil, "AI response missing expected content field for provider " .. provider
+    local keys_str = format_response_keys(decoded)
+    local diag = string.format(
+      "AI response missing expected content field for provider %s. Top-level keys: %s",
+      provider,
+      keys_str
+    )
+    -- Log the raw body (truncated) so the user can inspect it
+    local truncated = raw_body:sub(1, 1500)
+    if #raw_body > 1500 then
+      truncated = truncated .. "\n... [response truncated, check :messages for full body]"
+    end
+    print("packard: AI response parsing failed. Full response body:\n" .. truncated)
+    return nil, diag
   end
 
-  -- If content is a string that contains JSON, try to extract it
+  -- 3. If content is a string that might contain JSON, try to extract it
   if type(content) == "string" then
     local json_str = content:match("{.*}")
     if json_str then
       local pok, pdecoded = pcall(vim.json.decode, json_str)
-      if pok then
+      if pok and type(pdecoded) == "table" then
         content = pdecoded
       end
     end
@@ -74,7 +173,7 @@ local function parse_llm_response(provider, raw_body)
     return nil, "AI response content is not a JSON object"
   end
 
-  -- Validate required fields
+  -- 4. Validate required fields
   if not content.summary or not content.risk or not content.reasoning then
     return nil, "AI response missing required fields: summary, risk, or reasoning"
   end
@@ -189,6 +288,11 @@ function AI.review(plugin, from_sha, to_sha, opts, callback)
         if curl_out.code ~= 0 then
           callback("curl failed: " .. (curl_out.stderr or "unknown error"))
           return
+        end
+
+        -- Debug: log raw response before parsing
+        if opts.debug and curl_out.stdout then
+          print("packard [debug]: AI raw response body:\n" .. curl_out.stdout)
         end
 
         -- 5. Parse response

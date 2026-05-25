@@ -171,6 +171,103 @@ Let me know if you have questions.
     Helpers.expect(result.summary).to_be("Markdown wrapped")
     Helpers.expect(result.risk).to_be("Low")
   end)
+
+  -- Generic fallback tests
+  Helpers.it("parses choices[1].text (older Completions API)", function()
+    local body = vim.json.encode({
+      choices = { { text = '{"summary":"Fallback text","risk":"Low","reasoning":"via choices[1].text"}' } },
+    })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(err).to_be_nil()
+    assert(result ~= nil)
+    Helpers.expect(result.summary).to_be("Fallback text")
+    Helpers.expect(result.risk).to_be("Low")
+  end)
+
+  Helpers.it("parses content as array of {type, text} parts (anthropic-style for openai)", function()
+    local body = vim.json.encode({
+      content = { { type = "text", text = '{"summary":"Array parts","risk":"Medium","reasoning":"via content[1].text"}' } },
+    })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(err).to_be_nil()
+    assert(result ~= nil)
+    Helpers.expect(result.summary).to_be("Array parts")
+    Helpers.expect(result.risk).to_be("Medium")
+  end)
+
+  Helpers.it("parses content as bare string (direct response)", function()
+    local body = vim.json.encode({
+      content = '{"summary":"Direct string","risk":"Low","reasoning":"via content string"}',
+    })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(err).to_be_nil()
+    assert(result ~= nil)
+    Helpers.expect(result.summary).to_be("Direct string")
+  end)
+
+  Helpers.it("parses output[0].content[0].text (Responses API)", function()
+    local body = vim.json.encode({
+      output = { { content = { { text = '{"summary":"Responses API","risk":"Low","reasoning":"via output[0].content[0].text"}' } } } },
+    })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(err).to_be_nil()
+    assert(result ~= nil)
+    Helpers.expect(result.summary).to_be("Responses API")
+    Helpers.expect(result.reasoning:find("output") ~= nil).to_be_truthy()
+    local result2, err2 = AI.parse_llm_response("anthropic", body)
+    Helpers.expect(err2).to_be_nil()
+    assert(result2 ~= nil)
+    Helpers.expect(result2.summary).to_be("Responses API")
+  end)
+
+  Helpers.it("parses delta.content (streaming chunk format)", function()
+    local body = vim.json.encode({
+      choices = { { delta = { content = '{"summary":"Streaming","risk":"Low","reasoning":"via delta"}' } } },
+    })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(err).to_be_nil()
+    assert(result ~= nil)
+    Helpers.expect(result.summary).to_be("Streaming")
+  end)
+
+  -- API error detection tests
+  Helpers.it("detects API error with message field", function()
+    local body = vim.json.encode({ error = { message = "Rate limit exceeded" } })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(result).to_be_nil()
+    assert(err ~= nil)
+    Helpers.expect(err:find("API error")).to_be_truthy()
+    Helpers.expect(err:find("Rate limit")).to_be_truthy()
+  end)
+
+  Helpers.it("detects API error with code field", function()
+    local body = vim.json.encode({ error = { code = "insufficient_quota" } })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(result).to_be_nil()
+    assert(err ~= nil)
+    Helpers.expect(err:find("API error")).to_be_truthy()
+    Helpers.expect(err:find("insufficient_quota")).to_be_truthy()
+  end)
+
+  Helpers.it("detects string API error", function()
+    local body = vim.json.encode({ error = "Insufficient credits" })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(result).to_be_nil()
+    assert(err ~= nil)
+    Helpers.expect(err:find("API error")).to_be_truthy()
+    Helpers.expect(err:find("Insufficient credits")).to_be_truthy()
+  end)
+
+  Helpers.it("handles empty choices array gracefully", function()
+    local body = vim.json.encode({ choices = {}, model = "gpt-4o" })
+    local result, err = AI.parse_llm_response("openai", body)
+    Helpers.expect(result).to_be_nil()
+    assert(err ~= nil)
+    Helpers.expect(err:find("missing expected content field")).to_be_truthy()
+    -- Should include top-level keys in the error message
+    Helpers.expect(err:find("choices")).to_be_truthy()
+    Helpers.expect(err:find("model")).to_be_truthy()
+  end)
 end)
 
 -- ============================================================================
