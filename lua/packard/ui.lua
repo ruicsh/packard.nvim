@@ -58,7 +58,7 @@ function UI.open(plugins, initial_tab, is_offline)
     row = row,
     col = col,
     style = "minimal",
-    border = "single",
+    border = "rounded",
     title = " Packard ",
     title_pos = "center",
   })
@@ -134,7 +134,7 @@ function UI.setup_highlights(user_highlights)
 
   local defaults = {
     PackardHeader = { link = "Normal" },
-    PackardH2 = { link = "Bold" },
+    PackardH2 = { link = "Comment" },
     PackardComment = { link = "Comment" },
     PackardButton = { link = "CursorLine" },
     PackardButtonActive = { link = "Visual" },
@@ -154,7 +154,8 @@ function UI.setup_highlights(user_highlights)
     PackardAIRiskLow = { link = "DiagnosticInfo" },
     PackardAIRiskMedium = { link = "DiagnosticWarn" },
     PackardAIRiskHigh = { link = "DiagnosticError" },
-    PackardAIBorder = { link = "Normal" },
+    PackardAIValue = {},
+    PackardAIBorder = {},
   }
 
   local highlights = vim.tbl_deep_extend("force", defaults, UI._highlight_config or {})
@@ -452,19 +453,45 @@ function UI.apply_highlights(lines)
         vim.api.nvim_buf_set_extmark(buf, ns, i - 1, west_end, { end_col = east_col, hl_group = "PackardAIBorder" })
       else
         -- Vertical (│): Content highlights
-        -- 1. Labels
+        -- 1. Labels vs Values
         local labels = { "Summary:", "Risk:", "Reasoning:", "Error:" }
+        local found_label = false
         for _, label in ipairs(labels) do
           local label_pos = line:find(label, 8, true)
           if label_pos == 9 then
+            found_label = true
             vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, {
               end_col = 8 + #label,
               hl_group = "PackardH2",
             })
+            -- Highlight the value part (after label + spaces)
+            local value_start = 8 + #label
+            while value_start < east_col and line:sub(value_start + 1, value_start + 1) == " " do
+              value_start = value_start + 1
+            end
+            if value_start < east_col then
+              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, value_start, {
+                end_col = east_col,
+                hl_group = "PackardAIValue",
+              })
+            end
+            break
           end
         end
 
-        -- 2. Specific line content
+        -- Continuation lines (indented value text)
+        if not found_label then
+          local content_start = line:find("%S", 9)
+          if content_start and content_start >= 19 and content_start < east_col then
+            -- This looks like a continuation of Summary or Reasoning
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, content_start - 1, {
+              end_col = east_col,
+              hl_group = "PackardAIValue",
+            })
+          end
+        end
+
+        -- 2. Specific line content (Risk value color overrides)
         local content = line:sub(9)
         if content:match("^Risk:") then
           local risk = content:match("^Risk:%s+(%w+)")
@@ -484,11 +511,11 @@ function UI.apply_highlights(lines)
           -- Highlight the spinner (starts at byte 9, usually 3 bytes)
           -- Actually spinner starts at content start (byte 9)
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, { end_col = 11, hl_group = "PackardStatusWarn" })
-        elseif content:find("[a] Re-run", 1, true) then
-          local pos_in_content = content:find("[a] Re-run", 1, true)
+        elseif content:find("[A] Re-run", 1, true) then
+          local pos_in_content = content:find("[A] Re-run", 1, true)
           local pos_in_line = 8 + pos_in_content
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, pos_in_line - 1, {
-            end_col = pos_in_line - 1 + #"[a] Re-run",
+            end_col = pos_in_line - 1 + #"[A] Re-run",
             hl_group = "PackardButton",
           })
         end
@@ -687,7 +714,7 @@ end
 function UI._render_ai_expansion(lines, owner_repo)
   local result = UI.ai_results[owner_repo]
   local win_width = vim.api.nvim_win_get_width(UI.win)
-  local width = win_width - 8
+  local width = math.min(win_width - 8, 72)
   local inner_width = width - 4 -- Account for "│ " and " │"
 
   local function add_line(content)
@@ -717,6 +744,8 @@ function UI._render_ai_expansion(lines, owner_repo)
     add_line("Error: " .. result.data:sub(1, inner_width - 7))
   elseif result.state == "result" then
     local data = result.data
+    add_line("Risk:      " .. data.risk)
+
     -- Wrap summary
     local wrap_width = inner_width - 11
     local summary_lines = UI._wrap_text(data.summary, wrap_width)
@@ -725,15 +754,14 @@ function UI._render_ai_expansion(lines, owner_repo)
       add_line(prefix .. l)
     end
 
-    add_line("Risk:      " .. data.risk)
-
     local reasoning_lines = UI._wrap_text(data.reasoning, wrap_width)
     for i, l in ipairs(reasoning_lines) do
       local prefix = i == 1 and "Reasoning: " or "           "
       add_line(prefix .. l)
     end
 
-    add_line("[a] Re-run")
+    add_line("")
+    add_line("[A] Re-run")
   end
 
   table.insert(lines, "    ╰" .. string.rep("─", total_border_cols) .. "╯")
