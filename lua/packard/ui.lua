@@ -141,6 +141,7 @@ function UI.setup_highlights(user_highlights)
     PackardPluginName = { link = "Normal" },
     PackardPluginNameSelected = { link = "Visual" },
     PackardCommit = { link = "Normal" },
+    PackardCommitHash = { link = "Identifier" },
     PackardStatusOk = { link = "DiagnosticOk" },
     PackardStatusWarn = { link = "DiagnosticWarn" },
     PackardStatusError = { link = "DiagnosticError" },
@@ -521,9 +522,9 @@ function UI.apply_highlights(lines)
           local commit_start = line:find("%w", name_end)
           if commit_start then
             local commit_end = line:find(" ", commit_start)
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start, {
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start - 1, {
               end_col = commit_end,
-              hl_group = "PackardCommit",
+                hl_group = "PackardCommitHash",
             })
 
             -- 4. Risk (if in pending tab)

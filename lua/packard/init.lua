@@ -193,6 +193,7 @@ function M.setup(opts)
     PackardH2 = { link = "Bold" },
     PackardComment = { link = "Comment" },
     PackardCommit = { link = "Normal" },
+    PackardCommitHash = { link = "Identifier" },
     PackardStatusOk = { link = "DiagnosticOk" },
     PackardStatusWarn = { link = "DiagnosticWarn" },
     PackardStatusError = { link = "DiagnosticError" },
