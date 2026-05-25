@@ -5,6 +5,7 @@ local lockfile_path = vim.fs.joinpath(vim.fn.stdpath("config"), "nvim-pack-lock.
 ---@class LockfileEntry
 ---@field src string URL
 ---@field ref string SHA
+---@field rev string|nil
 ---@field version string|nil
 
 Lockfile._cache = nil
