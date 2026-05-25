@@ -1,5 +1,6 @@
 local M = {}
 local Parser = require("packard.parser")
+local Loader = require("packard.loader")
 local Fetch = require("packard.fetch")
 local Cooldown = require("packard.cooldown")
 local Lockfile = require("packard.lockfile")
@@ -172,8 +173,52 @@ function M.setup(opts)
     error(string.format("packard.setup: expected a table, got %s", type(opts)))
   end
 
-  if type(opts.plugins) ~= "table" then
-    error("packard.setup: 'plugins' must be a table")
+  local plugins = {}
+  local file_specs = {}
+
+  if opts.plugins_dir then
+    if type(opts.plugins_dir) ~= "string" then
+      error("packard.setup: 'plugins_dir' must be a string")
+    end
+    local errors, warnings
+    file_specs, errors, warnings = Loader.scan_all(opts.plugins_dir)
+
+    if #errors > 0 then
+      vim.notify(
+        string.format("packard: %d spec file(s) failed to load:\n%s", #errors, table.concat(errors, "\n")),
+        vim.log.levels.WARN
+      )
+    end
+    if #warnings > 0 then
+      vim.notify(
+        string.format(
+          "packard: %d spec file(s) returned non-table values and were skipped:\n%s",
+          #warnings,
+          table.concat(warnings, "\n")
+        ),
+        vim.log.levels.WARN
+      )
+    end
+  end
+
+  if opts.plugins then
+    if type(opts.plugins) ~= "table" then
+      error("packard.setup: 'plugins' must be a table")
+    end
+    -- Merge: file specs first, then inline
+    -- Deduplication happens by owner_repo later in Parser.parse_all
+    -- but we want to ensure inline wins on duplicates if we did it here.
+    -- Actually Parser.parse_all raises error on duplicate.
+    -- SPEC FR-039 says "inline wins. No duplicate error is raised."
+    -- So we need to handle deduplication here or modify Parser.
+    vim.list_extend(plugins, file_specs)
+    vim.list_extend(plugins, opts.plugins)
+  else
+    plugins = file_specs
+  end
+
+  if #plugins == 0 and not opts.plugins_dir and not opts.plugins then
+    error("packard.setup: at least one of 'plugins' or 'plugins_dir' must be provided")
   end
 
   local defaults = opts.defaults or {}
@@ -212,15 +257,33 @@ function M.setup(opts)
   M.config = {
     defaults = defaults,
     plugins = opts.plugins,
+    plugins_dir = opts.plugins_dir,
     ai_review = opts.ai_review,
     highlights = opts.highlights,
   }
 
   -- T-1.3.2: Include packard itself if not disabled
-  local plugins = vim.deepcopy(opts.plugins)
+  -- Filter enabled = false and handle duplicates (last wins)
+  local final_specs = {}
+  local seen = {}
+
+  for i = #plugins, 1, -1 do
+    local p = plugins[i]
+    if type(p) == "string" then
+      p = { p }
+    end
+    local source = p[1]
+    if source and not seen[source] then
+      if p.enabled ~= false then
+        table.insert(final_specs, 1, p)
+      end
+      seen[source] = true
+    end
+  end
+
   if opts.self_management ~= false then
     local found = false
-    for _, p in ipairs(plugins) do
+    for _, p in ipairs(final_specs) do
       local source = type(p) == "string" and p or p[1]
       if source:match("RuiCostaPT/packard.nvim") then
         found = true
@@ -228,11 +291,11 @@ function M.setup(opts)
       end
     end
     if not found then
-      table.insert(plugins, 1, "RuiCostaPT/packard.nvim")
+      table.insert(final_specs, 1, "RuiCostaPT/packard.nvim")
     end
   end
 
-  M.plugins = Parser.parse_all(plugins, defaults)
+  M.plugins = Parser.parse_all(final_specs, defaults)
   if #M.plugins == 0 then
     print("packard: no plugins declared. Add plugins to packard.setup().")
     return M

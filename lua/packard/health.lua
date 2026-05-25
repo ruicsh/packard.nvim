@@ -17,6 +17,15 @@ function Health.check()
   vim.health.start("Configuration")
   vim.health.ok(string.format("%d plugins declared in spec", #packard.plugins))
   vim.health.info(string.format("Global minimum_release_age: %d days", config.defaults.minimum_release_age or 30))
+  if config.plugins_dir then
+    local Loader = require("packard.loader")
+    local resolved = Loader.resolve_path(config.plugins_dir)
+    if vim.fn.isdirectory(resolved) == 1 then
+      vim.health.ok(string.format("plugins_dir: %s", resolved))
+    else
+      vim.health.error(string.format("plugins_dir: %s (NOT FOUND)", resolved))
+    end
+  end
 
   -- Lockfile
   vim.health.start("Lockfile")

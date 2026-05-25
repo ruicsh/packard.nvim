@@ -105,11 +105,6 @@ end
 local function test_errors()
   print("Testing error cases...")
 
-  -- Duplicate
-  assert_error(function()
-    packard.setup({ self_management = false, plugins = { "a/b", "a/b" } })
-  end, "duplicate plugin 'a/b'")
-
   -- SSH URL
   assert_error(function()
     packard.setup({ self_management = false, plugins = { "git@github.com:foo/bar.git" } })

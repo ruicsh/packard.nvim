@@ -66,10 +66,11 @@ function Parser.parse_all(plugins, defaults)
       error(string.format("packard: invalid plugin source '%s'. Expected 'owner/repo'.", source))
     end
 
-    if seen[owner_repo] then
-      error(string.format("packard: duplicate plugin '%s' detected at index %d", owner_repo, i))
-    end
-    seen[owner_repo] = true
+    -- Deduplication check removed here, handled in init.lua to allow "last wins"
+    -- if seen[owner_repo] then
+    --   error(string.format("packard: duplicate plugin '%s' detected at index %d", owner_repo, i))
+    -- end
+    -- seen[owner_repo] = true
 
     -- Derive name
     name = spec.name or owner_repo:match("/([^/]+)$")
