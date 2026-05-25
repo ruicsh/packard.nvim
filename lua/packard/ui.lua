@@ -939,6 +939,8 @@ function UI._format_age(timestamp)
     sec = tonumber(s) or 0,
     isdst = false, -- UTC
   })
+  -- DST note: same caveat as cooldown.lua. ±1 hour error at DST boundaries.
+  -- Acceptable for display purposes.
 
   local now_utc = os.time(os.date("!*t") --[[@as osdateparam]])
   local diff = now_utc - t

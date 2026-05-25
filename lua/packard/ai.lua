@@ -61,13 +61,8 @@ local function parse_llm_response(provider, raw_body)
 
   -- If content is a string that contains JSON, try to extract it
   if type(content) == "string" then
-    -- Find the first '{' and last '}'
-    local first = content:find("{")
-    local last = content:match(".*}")
-    if first and last then
-      local json_str = content:sub(first, content:find("}", first + (content:find(".*}") or 0) - 1))
-      -- Re-find last because pattern matching in Lua is limited
-      json_str = content:match("{.*}")
+    local json_str = content:match("{.*}")
+    if json_str then
       local pok, pdecoded = pcall(vim.json.decode, json_str)
       if pok then
         content = pdecoded

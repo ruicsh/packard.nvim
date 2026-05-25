@@ -56,19 +56,12 @@ function M._bootstrap()
 
   -- Call Neovim's built-in pack manager
   if vim.pack and vim.pack.add then
-    -- Ensure specs is a list by resetting keys if necessary,
-    -- though table.insert already ensures it's a list.
-    -- However, let's be extremely explicit for vim.validate
-    local list_specs = {}
-    for i, s in ipairs(specs) do
-      list_specs[i] = s
-    end
     -- confirm=false because packard manages plugins programmatically:
     -- user opted in by listing them in packard.setup().  vim.pack.add
     -- defaults to confirm=true which prompts mid-startup and can hang
     -- or fail when run headless or from an init script.
     --[[@diagnostic disable-next-line: redundant-parameter]]
-    vim.pack.add(list_specs, { confirm = false })
+    vim.pack.add(specs, { confirm = false })
   end
 
   -- Persist initial state on first run so it's explicitly tracked

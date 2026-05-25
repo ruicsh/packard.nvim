@@ -78,12 +78,16 @@ function State.write_ai_cache()
   local temp_path = ai_cache_path .. ".tmp"
   local f = io.open(temp_path, "w")
   if not f then
-    error("packard: could not open temp AI cache file for writing: " .. temp_path)
+    vim.notify("packard: could not open temp AI cache file: " .. temp_path, vim.log.levels.ERROR)
+    return
   end
-
-  f:write(vim.json.encode(State._ai_cache))
+  local ok, write_err = pcall(f.write, f, vim.json.encode(State._ai_cache))
   f:close()
-
+  if not ok then
+    os.remove(temp_path)
+    vim.notify("packard: AI cache write failed: " .. tostring(write_err), vim.log.levels.ERROR)
+    return
+  end
   os.rename(temp_path, ai_cache_path)
 end
 
@@ -170,12 +174,16 @@ function State.write()
   local temp_path = state_path .. ".tmp"
   local f = io.open(temp_path, "w")
   if not f then
-    error("packard: could not open temp state file for writing: " .. temp_path)
+    vim.notify("packard: could not open temp state file: " .. temp_path, vim.log.levels.ERROR)
+    return
   end
-
-  f:write(vim.json.encode(State._cache))
+  local ok, write_err = pcall(f.write, f, vim.json.encode(State._cache))
   f:close()
-
+  if not ok then
+    os.remove(temp_path)
+    vim.notify("packard: state write failed: " .. tostring(write_err), vim.log.levels.ERROR)
+    return
+  end
   os.rename(temp_path, state_path)
 end
 

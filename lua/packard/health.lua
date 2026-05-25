@@ -76,7 +76,9 @@ function Health.check()
 
   -- Network
   vim.health.start("Network")
-  if Git.check_network(packard.plugins[1].url, 2000) then
+  if #packard.plugins == 0 then
+    vim.health.info("No plugins configured (skipping network check)")
+  elseif Git.check_network(packard.plugins[1].url, 2000) then
     vim.health.ok("Network available")
   else
     vim.health.warn("Network unavailable")

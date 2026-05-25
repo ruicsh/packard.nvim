@@ -53,9 +53,11 @@ function Cooldown.check_eligibility(discovered_at, min_age_days)
     isdst = false, -- UTC
   })
 
-  -- `os.time()` returns local time if no table or if table doesn't specify.
-  -- To get UTC time from `os.time()` with a table, it's tricky in Lua 5.1/JIT.
-  -- Usually we should use `os.time(os.date("!*t"))` to get current UTC time.
+  -- DST note: os.time() with a table and isdst=false in LuaJIT interprets
+  -- table fields as UTC, but behavior may vary by platform. In the worst
+  -- case the age calculation is off by ±1 hour. For a 30-day cooldown this
+  -- is a 0.14% error — negligible. For minimum_release_age = 1, eligibility
+  -- may shift by up to 1 hour at DST boundaries. Considered acceptable.
 
   local now_utc = os.time(os.date("!*t") --[[@as osdateparam]])
   local age_seconds = now_utc - discovered_time
