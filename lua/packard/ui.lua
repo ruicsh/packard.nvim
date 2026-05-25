@@ -141,18 +141,18 @@ function UI.setup_highlights(user_highlights)
     PackardPluginName = { link = "Normal" },
     PackardPluginNameSelected = { link = "Visual" },
     PackardCommit = { link = "Normal" },
-    PackardStatusOk = { link = "Normal" },
-    PackardStatusWarn = { link = "Normal" },
-    PackardStatusError = { link = "Normal" },
+    PackardStatusOk = { link = "DiagnosticOk" },
+    PackardStatusWarn = { link = "DiagnosticWarn" },
+    PackardStatusError = { link = "DiagnosticError" },
     PackardEligible = { link = "Normal" },
     PackardCooldown = { link = "Normal" },
     PackardKeyHint = { link = "@punctuation.special" },
     PackardDivider = { link = "Normal" },
     PackardProgressDone = { link = "Normal" },
     PackardProgressTodo = { link = "Normal" },
-    PackardAIRiskLow = { link = "Normal" },
-    PackardAIRiskMedium = { link = "Normal" },
-    PackardAIRiskHigh = { link = "Normal" },
+    PackardAIRiskLow = { link = "DiagnosticInfo" },
+    PackardAIRiskMedium = { link = "DiagnosticWarn" },
+    PackardAIRiskHigh = { link = "DiagnosticError" },
     PackardAIBorder = { link = "Normal" },
   }
 
@@ -342,7 +342,7 @@ function UI._do_render()
     UI._cursor_repo = UI.line_map[line]
   end
 
-  UI.apply_highlights()
+  UI.apply_highlights(lines)
 
   vim.api.nvim_win_set_config(
     UI.win,
@@ -350,10 +350,10 @@ function UI._do_render()
   )
 end
 
-function UI.apply_highlights()
+function UI.apply_highlights(lines)
   local buf = UI.buf
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  lines = lines or vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 
   -- Apply header tab highlights
   if UI._tab_extmarks then
@@ -406,74 +406,7 @@ function UI.apply_highlights()
           hl_group = "PackardH2",
         })
       end
-    elseif line:match("^    [●⚠⏳]") then -- Plugin rows
-      -- 1. Icon
-      local icon_match = line:match("^    ([●⚠⏳][^ ]*)")
-      if icon_match then
-        local icon_len = #icon_match
-        vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 4, {
-          end_col = 4 + icon_len,
-          hl_group = line:match("⚠") and "PackardStatusError" or "PackardStatusOk",
-        })
-
-        -- 2. Plugin Name
-        local name_start = 4 + icon_len + 1
-        -- Use a pattern to find the first double-space or multiple spaces that separate name from commit
-        local name_end = line:find("  ", name_start)
-        if name_end then
-          local owner_repo = UI.line_map[i]
-          local is_selected = (owner_repo and owner_repo == UI._cursor_repo)
-          local hl_name = is_selected and "PackardPluginNameSelected" or "PackardPluginName"
-
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, name_start, {
-            end_col = name_end,
-            hl_group = hl_name,
-            priority = is_selected and 200 or 100,
-          })
-
-          -- 3. Commit (find next word)
-          local commit_start = line:find("%w", name_end)
-          if commit_start then
-            local commit_end = line:find(" ", commit_start)
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start, {
-              end_col = commit_end,
-              hl_group = "PackardCommit",
-            })
-
-            -- 4. Risk (if in pending tab)
-            if UI.tab == "pending" then
-              local risk_start = line:find("%S", commit_end)
-              if risk_start then
-                local risk_end = line:find(" ", risk_start)
-                local risk = line:sub(risk_start, risk_end and risk_end - 1 or #line)
-                local hl = "PackardAIRiskLow"
-                if risk == "medium" then
-                  hl = "PackardAIRiskMedium"
-                elseif risk == "high" then
-                  hl = "PackardAIRiskHigh"
-                end
-                vim.api.nvim_buf_set_extmark(buf, ns, i - 1, risk_start - 1, {
-                  end_col = risk_end and risk_end - 1 or #line,
-                  hl_group = hl,
-                })
-
-                -- 5. Cooldown/Eligible status
-                if risk_end then
-                  local status_start = line:find("%S", risk_end)
-                  if status_start then
-                    local status_end = line:find("  ", status_start)
-                    vim.api.nvim_buf_set_extmark(buf, ns, i - 1, status_start - 1, {
-                      end_col = status_end or #line,
-                      hl_group = line:match("Eligible") and "PackardEligible" or "PackardCooldown",
-                    })
-                  end
-                end
-              end
-            end
-          end
-        end
-      end
-    elseif line:match("^    [╭╰│]") then
+    elseif line:match("^    │") or line:match("^    ╭") or line:match("^    ╰") then
       -- AI Expansion
       local line_len = #line
       local west_col = 4
@@ -518,10 +451,11 @@ function UI.apply_highlights()
         vim.api.nvim_buf_set_extmark(buf, ns, i - 1, west_end, { end_col = east_col, hl_group = "PackardAIBorder" })
       else
         -- Vertical (│): Content highlights
+        -- 1. Labels
         local labels = { "Summary:", "Risk:", "Reasoning:", "Error:" }
         for _, label in ipairs(labels) do
           local label_pos = line:find(label, 8, true)
-          if label_pos == 9 then -- 1-indexed find: 9 is 0-indexed 8
+          if label_pos == 9 then
             vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, {
               end_col = 8 + #label,
               hl_group = "PackardH2",
@@ -529,31 +463,100 @@ function UI.apply_highlights()
           end
         end
 
-        if line:match("Risk:") then
-          local risk_label_end = line:find("Risk:", 8, true)
-          if risk_label_end == 9 then
-            local risk = line:match("Risk:%s+(%w+)")
-            if risk then
-              local r_start = line:find(risk, 8 + #"Risk:", true)
-              if r_start then
-                local hl = (risk == "high" and "PackardAIRiskHigh")
-                  or (risk == "medium" and "PackardAIRiskMedium")
-                  or "PackardAIRiskLow"
-                vim.api.nvim_buf_set_extmark(buf, ns, i - 1, r_start - 1, {
-                  end_col = r_start - 1 + #risk,
+        -- 2. Specific line content
+        local content = line:sub(9)
+        if content:match("^Risk:") then
+          local risk = content:match("^Risk:%s+(%w+)")
+          if risk then
+            local r_start_in_line = line:find(risk, 13, true)
+            if r_start_in_line then
+              local hl = (risk == "high" and "PackardAIRiskHigh")
+                or (risk == "medium" and "PackardAIRiskMedium")
+                or "PackardAIRiskLow"
+              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, r_start_in_line - 1, {
+                end_col = r_start_in_line - 1 + #risk,
+                hl_group = hl,
+              })
+            end
+          end
+        elseif content:match("AI review in progress") then
+          -- Highlight the spinner (starts at byte 9, usually 3 bytes)
+          -- Actually spinner starts at content start (byte 9)
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, { end_col = 11, hl_group = "PackardStatusWarn" })
+        elseif content:find("[a] Re-run", 1, true) then
+          local pos_in_content = content:find("[a] Re-run", 1, true)
+          local pos_in_line = 8 + pos_in_content
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, pos_in_line - 1, {
+            end_col = pos_in_line - 1 + #"[a] Re-run",
+            hl_group = "PackardButton",
+          })
+        end
+      end
+    elseif line:match("^    [●⚠⏳]") then -- Plugin rows
+      -- 1. Icon
+      local icon_match = line:match("^    (%S+)")
+      if icon_match then
+        local icon_len = #icon_match
+        vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 4, {
+          end_col = 4 + icon_len,
+          hl_group = line:match("⚠") and "PackardStatusError" or "PackardStatusOk",
+        })
+
+        -- 2. Plugin Name
+        local name_start = 4 + icon_len + 1
+        -- Use a pattern to find the first double-space or multiple spaces that separate name from commit
+        local name_end = line:find("  ", name_start)
+        if name_end then
+          local owner_repo = UI.line_map[i]
+          local is_selected = (owner_repo and owner_repo == UI._cursor_repo)
+          local hl_name = is_selected and "PackardPluginNameSelected" or "PackardPluginName"
+
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, name_start, {
+            end_col = name_end,
+            hl_group = hl_name,
+            priority = is_selected and 200 or 100,
+          })
+
+          -- 3. Commit (find next word)
+          local commit_start = line:find("%w", name_end)
+          if commit_start then
+            local commit_end = line:find(" ", commit_start)
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start, {
+              end_col = commit_end,
+              hl_group = "PackardCommit",
+            })
+
+            -- 4. Risk (if in pending tab)
+            if UI.tab == "pending" then
+              local risk_start = line:find("%S", commit_end)
+              if risk_start then
+                local risk_end = line:find(" ", risk_start)
+                local risk = line:sub(risk_start, risk_end and risk_end - 1 or #line)
+                local hl = "PackardAIRiskLow"
+                if risk == "medium" then
+                  hl = "PackardAIRiskMedium"
+                elseif risk == "high" then
+                  hl = "PackardAIRiskHigh"
+                end
+                vim.api.nvim_buf_set_extmark(buf, ns, i - 1, risk_start - 1, {
+                  end_col = risk_start - 1 + #risk,
                   hl_group = hl,
                 })
+
+                -- 5. Cooldown/Eligible status
+                if risk_end then
+                  local status_start = line:find("%S", risk_end)
+                  if status_start then
+                    local status_end = line:find("  ", status_start)
+                    vim.api.nvim_buf_set_extmark(buf, ns, i - 1, status_start - 1, {
+                      end_col = status_end or #line,
+                      hl_group = line:match("Eligible") and "PackardEligible" or "PackardCooldown",
+                    })
+                  end
+                end
               end
             end
           end
-        elseif line:match("AI review in progress") then
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, { end_col = 11, hl_group = "PackardStatusWarn" })
-        elseif line:find("[a] Re-run", 8, true) then
-          local pos = line:find("[a] Re-run", 8, true)
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, pos - 1, {
-            end_col = pos - 1 + #"[a] Re-run",
-            hl_group = "PackardButton",
-          })
         end
       end
     end
