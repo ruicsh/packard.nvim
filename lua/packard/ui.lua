@@ -436,7 +436,13 @@ function UI.apply_highlights(lines)
             local right_start = title_pos - 1 + #title_text
             local right_end = east_col
             if left_end > left_start then
-              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, left_start, { end_col = left_end, hl_group = "PackardAIBorder" })
+              vim.api.nvim_buf_set_extmark(
+                buf,
+                ns,
+                i - 1,
+                left_start,
+                { end_col = left_end, hl_group = "PackardAIBorder" }
+              )
             end
             if right_end > right_start then
               vim.api.nvim_buf_set_extmark(
@@ -464,7 +470,7 @@ function UI.apply_highlights(lines)
       else
         -- Vertical (│): Content highlights
         local content = line:sub(9, -3) -- Strip padding
-        
+
         -- 1. Labels vs Values (AI Review)
         local labels = { "Summary:", "Risk:", "Reasoning:", "Error:" }
         local found_label = false
@@ -971,6 +977,9 @@ function UI.handle_approve()
     return
   end
 
+  -- Record the old commit before updating
+  local old_commit = Lockfile.get_installed_commit(plugin_name)
+
   print("packard: updating " .. owner_repo .. "...")
 
   local update_ok = true
@@ -982,15 +991,26 @@ function UI.handle_approve()
     end
   end
 
-  -- The `PackChanged` auto command in `init.lua` will handle:
-  -- 1. Logging the update
-  -- 2. Queuing from state
-  -- 3. Refreshing the dashboard
   if update_ok then
+    -- Read lockfile to get the new commit
+    Lockfile.invalidate()
+    local new_commit = Lockfile.get_installed_commit(plugin_name)
+
+    -- Log the update
+    if old_commit and new_commit and old_commit ~= new_commit then
+      State.log_update(owner_repo, old_commit, new_commit)
+    end
+
+    -- Dequeue from pending
+    State.dequeue(owner_repo)
+
     print("packard: approved " .. owner_repo)
   else
     print("packard: update command failed for " .. owner_repo)
   end
+
+  -- Always refresh the dashboard
+  UI.render()
 end
 
 function UI.handle_reject()
