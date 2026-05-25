@@ -69,9 +69,6 @@ Helpers.describe("UI Dashboard", function()
     UI.open({}, "help")
     UI._do_render()
     local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
-    for i, l in ipairs(lines) do
-      print(string.format("line %d: %q", i, l))
-    end
     local found = false
     for _, line in ipairs(lines) do
       if line:match("KEYBINDINGS:") then
@@ -96,6 +93,7 @@ Helpers.describe("UI Dashboard", function()
       },
     }
     UI.expanded_row = "owner/repo"
+    UI.expanded_type = "ai"
 
     -- Mock Cooldown.get_status to return our plugin
     local old_get_status = Cooldown.get_status
@@ -198,6 +196,224 @@ Helpers.describe("UI Dashboard", function()
     Helpers.expect(found_normal).to_be_truthy()
 
     UI.close()
+  end)
+
+  Helpers.describe("handle_log", function()
+    Helpers.it("shows log between installed and pending in Pending tab (inline)", function()
+      local plugin =
+        { name = "test-plugin", owner_repo = "test/test-plugin", url = "https://github.com/test/test-plugin" }
+      UI.open({ plugin }, "pending")
+      UI._cursor_repo = "test/test-plugin"
+
+      -- Mock State.read for queue entry
+      local old_state_read = State.read
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      State.read = function()
+        return { queue = { ["test/test-plugin"] = { commit = "pending_sha" } } }
+      end
+
+      -- Mock Lockfile
+      local old_lockfile = Lockfile.get_installed_commit
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      Lockfile.get_installed_commit = function()
+        return "installed_sha"
+      end
+
+      -- Mock Cooldown.get_status
+      local old_get_status = Cooldown.get_status
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      Cooldown.get_status = function()
+        return {
+          eligible = { ["test/test-plugin"] = { commit = "pending_sha", discovered_at = "..." } },
+          cooldown = {},
+        }
+      end
+
+      UI._do_render()
+
+      -- Find line index
+      local line_idx
+      for idx, repo in pairs(UI.line_map) do
+        if repo == "test/test-plugin" then
+          line_idx = idx
+          break
+        end
+      end
+      Helpers.expect(line_idx).to_be_truthy()
+      vim.api.nvim_win_set_cursor(UI.win, { line_idx, 0 })
+
+      -- Mock vim.system
+      local original_system = vim.system
+      local git_cmd_called = false
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      vim.system = function(cmd, opts)
+        if cmd[1] == "git" and cmd[2] == "log" then
+          git_cmd_called = true
+          Helpers.expect(cmd[#cmd]).to_be("installed_sha..pending_sha")
+          return {
+            wait = function()
+              return { code = 0, stdout = "abc1234 Commit message (2 days ago)\n" }
+            end,
+          }
+        end
+        return original_system(cmd, opts)
+      end
+
+      -- Call handler
+      UI.handle_log()
+
+      Helpers.expect(git_cmd_called).to_be_truthy()
+      Helpers.expect(UI.expanded_row).to_be("test/test-plugin")
+      Helpers.expect(UI.expanded_type).to_be("log")
+
+      -- Check if expansion is rendered in the buffer
+      local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+      local found_log = false
+      for _, line in ipairs(lines) do
+        if line:match("Commit Log") or line:match("abc1234 Commit message") then
+          found_log = true
+        end
+      end
+      Helpers.expect(found_log).to_be_truthy()
+
+      -- Cleanup
+      vim.system = original_system
+      State.read = old_state_read
+      Lockfile.get_installed_commit = old_lockfile
+      Cooldown.get_status = old_get_status
+      UI.close()
+    end)
+
+    Helpers.it("shows recent commits in Installed tab (inline)", function()
+      local plugin =
+        { name = "test-plugin", owner_repo = "test/test-plugin", url = "https://github.com/test/test-plugin" }
+      UI.open({ plugin }, "installed")
+      UI._cursor_repo = "test/test-plugin"
+
+      -- Mock Lockfile
+      local old_lockfile = Lockfile.get_installed_commit
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      Lockfile.get_installed_commit = function()
+        return "installed_sha"
+      end
+
+      UI._do_render()
+
+      -- Find line index
+      local line_idx
+      for idx, repo in pairs(UI.line_map) do
+        if repo == "test/test-plugin" then
+          line_idx = idx
+          break
+        end
+      end
+      Helpers.expect(line_idx).to_be_truthy()
+      vim.api.nvim_win_set_cursor(UI.win, { line_idx, 0 })
+
+      -- Mock vim.system
+      local original_system = vim.system
+      local git_cmd_called = false
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      vim.system = function(cmd, opts)
+        if cmd[1] == "git" and cmd[2] == "log" then
+          git_cmd_called = true
+          Helpers.expect(cmd[#cmd]).to_be("-10")
+          return {
+            wait = function()
+              return { code = 0, stdout = "abc1234 Commit message (2 days ago)\n" }
+            end,
+          }
+        end
+        return original_system(cmd, opts)
+      end
+
+      -- Call handler
+      UI.handle_log()
+
+      Helpers.expect(git_cmd_called).to_be_truthy()
+      Helpers.expect(UI.expanded_row).to_be("test/test-plugin")
+      Helpers.expect(UI.expanded_type).to_be("log")
+
+      -- Cleanup
+      vim.system = original_system
+      Lockfile.get_installed_commit = old_lockfile
+      UI.close()
+    end)
+
+    Helpers.it("shows 'No new commits' when log is empty (inline)", function()
+      local plugin =
+        { name = "test-plugin", owner_repo = "test/test-plugin", url = "https://github.com/test/test-plugin" }
+      UI.open({ plugin }, "pending")
+      UI._cursor_repo = "test/test-plugin"
+
+      -- Mock State.read for queue entry
+      local old_state_read = State.read
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      State.read = function()
+        return { queue = { ["test/test-plugin"] = { commit = "same_sha" } } }
+      end
+      -- Mock Lockfile
+      local old_lockfile = Lockfile.get_installed_commit
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      Lockfile.get_installed_commit = function()
+        return "same_sha"
+      end
+      -- Mock Cooldown.get_status
+      local old_get_status = Cooldown.get_status
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      Cooldown.get_status = function()
+        return {
+          eligible = { ["test/test-plugin"] = { commit = "same_sha", discovered_at = "..." } },
+          cooldown = {},
+        }
+      end
+
+      UI._do_render()
+
+      -- Find line index
+      local line_idx
+      for idx, repo in pairs(UI.line_map) do
+        if repo == "test/test-plugin" then
+          line_idx = idx
+          break
+        end
+      end
+      Helpers.expect(line_idx).to_be_truthy()
+      vim.api.nvim_win_set_cursor(UI.win, { line_idx, 0 })
+
+      -- Mock vim.system
+      local original_system = vim.system
+      --[[@diagnostic disable-next-line: duplicate-set-field]]
+      vim.system = function(cmd, opts)
+        if cmd[1] == "git" and cmd[2] == "log" then
+          return {
+            wait = function()
+              return { code = 0, stdout = "" }
+            end,
+          }
+        end
+        return original_system(cmd, opts)
+      end
+
+      -- Call handler
+      UI.handle_log()
+
+      local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+      local found_no_commits = false
+      for _, line in ipairs(lines) do
+        if line:match("No new commits") then
+          found_no_commits = true
+        end
+      end
+      Helpers.expect(found_no_commits).to_be_truthy()
+
+      -- Cleanup
+      vim.system = original_system
+      State.read = old_state_read
+      Lockfile.get_installed_commit = old_lockfile
+      Cooldown.get_status = old_get_status
+      UI.close()
+    end)
   end)
 end)
 

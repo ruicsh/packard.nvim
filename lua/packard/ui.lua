@@ -14,6 +14,7 @@ UI.is_offline = false
 UI.config = nil -- Store config from init
 UI.ai_results = {} -- Map owner_repo to { state = "loading"|"result"|"error", data = ... }
 UI.expanded_row = nil -- owner_repo of expanded row
+UI.expanded_type = nil -- "ai" or "log"
 UI._cursor_repo = nil -- owner_repo of plugin under cursor
 UI.progress = { current = 0, total = 0, message = "" }
 UI._render_scheduled = false
@@ -69,7 +70,7 @@ function UI.open(plugins, initial_tab, is_offline)
   -- T-4.1.6: Keymaps
   UI.setup_keymaps()
 
-  -- Auto-collapse AI expansion on cursor move
+  -- Auto-collapse expansion on cursor move
   vim.api.nvim_create_autocmd("CursorMoved", {
     buffer = UI.buf,
     callback = function()
@@ -77,19 +78,14 @@ function UI.open(plugins, initial_tab, is_offline)
       local owner_repo = UI.line_map[line]
 
       local changed = false
-
-      -- Track cursor plugin name
       if owner_repo ~= UI._cursor_repo then
         UI._cursor_repo = owner_repo
         changed = true
-      end
 
-      -- If the current line doesn't map to the expanded row AND it's not part of the expansion lines
-      -- (expansion lines don't have a mapping in line_map)
-      if UI.expanded_row and UI.tab == "pending" then
-        if owner_repo and owner_repo ~= UI.expanded_row then
+        -- If we moved to a different row, collapse expansion
+        if UI.expanded_row and owner_repo ~= UI.expanded_row then
           UI.expanded_row = nil
-          changed = true
+          UI.expanded_type = nil
         end
       end
 
@@ -182,18 +178,21 @@ function UI.setup_keymaps()
     ["i"] = function()
       UI.tab = "installed"
       UI.expanded_row = nil
+      UI.expanded_type = nil
       UI._cursor_repo = nil
       UI.render()
     end,
     ["p"] = function()
       UI.tab = "pending"
       UI.expanded_row = nil
+      UI.expanded_type = nil
       UI._cursor_repo = nil
       UI.render()
     end,
     ["s"] = function()
       UI.tab = "summary"
       UI.expanded_row = nil
+      UI.expanded_type = nil
       UI._cursor_repo = nil
       UI.render()
     end,
@@ -206,6 +205,9 @@ function UI.setup_keymaps()
     ["?"] = function()
       UI.tab = "help"
       UI.render()
+    end,
+    ["<CR>"] = function()
+      UI.handle_log()
     end,
     -- Standard navigation handled by buffer defaults
     ["A"] = function()
@@ -239,6 +241,7 @@ function UI.close()
   UI.win = nil
   UI.buf = nil
   UI.expanded_row = nil
+  UI.expanded_type = nil
   UI._cursor_repo = nil
   UI._stop_spinner()
 end
@@ -409,7 +412,7 @@ function UI.apply_highlights(lines)
         })
       end
     elseif line:match("^    │") or line:match("^    ╭") or line:match("^    ╰") then
-      -- AI Expansion
+      -- Expansion Highlights
       local line_len = #line
       local west_col = 4
       local west_end = 7
@@ -422,38 +425,47 @@ function UI.apply_highlights(lines)
 
       if line:match("╭") then
         -- North: Horizontal lines + Title isolation
-        local title_text = " AI Review "
-        local title_pos = line:find(title_text, 1, true)
-        if title_pos then
-          local left_start = west_end
-          local left_end = title_pos - 1
-          local right_start = title_pos - 1 + #title_text
-          local right_end = east_col
-          if left_end > left_start then
-            vim.api.nvim_buf_set_extmark(
-              buf,
-              ns,
-              i - 1,
-              left_start,
-              { end_col = left_end, hl_group = "PackardAIBorder" }
-            )
+        local titles = { " AI Review ", " Commit Log " }
+        local found_title = false
+        for _, title_text in ipairs(titles) do
+          local title_pos = line:find(title_text, 1, true)
+          if title_pos then
+            found_title = true
+            local left_start = west_end
+            local left_end = title_pos - 1
+            local right_start = title_pos - 1 + #title_text
+            local right_end = east_col
+            if left_end > left_start then
+              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, left_start, { end_col = left_end, hl_group = "PackardAIBorder" })
+            end
+            if right_end > right_start then
+              vim.api.nvim_buf_set_extmark(
+                buf,
+                ns,
+                i - 1,
+                right_start,
+                { end_col = right_end, hl_group = "PackardAIBorder" }
+              )
+            end
+            -- Title: bold
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, title_pos - 1, {
+              end_col = title_pos - 1 + #title_text,
+              hl_group = "PackardH1",
+            })
+            break
           end
-          if right_end > right_start then
-            vim.api.nvim_buf_set_extmark(
-              buf,
-              ns,
-              i - 1,
-              right_start,
-              { end_col = right_end, hl_group = "PackardAIBorder" }
-            )
-          end
+        end
+        if not found_title then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, west_end, { end_col = east_col, hl_group = "PackardAIBorder" })
         end
       elseif line:match("╰") then
         -- South: Full horizontal line
         vim.api.nvim_buf_set_extmark(buf, ns, i - 1, west_end, { end_col = east_col, hl_group = "PackardAIBorder" })
       else
         -- Vertical (│): Content highlights
-        -- 1. Labels vs Values
+        local content = line:sub(9, -3) -- Strip padding
+        
+        -- 1. Labels vs Values (AI Review)
         local labels = { "Summary:", "Risk:", "Reasoning:", "Error:" }
         local found_label = false
         for _, label in ipairs(labels) do
@@ -464,7 +476,7 @@ function UI.apply_highlights(lines)
               end_col = 8 + #label,
               hl_group = "PackardH2",
             })
-            -- Highlight the value part (after label + spaces)
+            -- Value part
             local value_start = 8 + #label
             while value_start < east_col and line:sub(value_start + 1, value_start + 1) == " " do
               value_start = value_start + 1
@@ -479,20 +491,59 @@ function UI.apply_highlights(lines)
           end
         end
 
-        -- Continuation lines (indented value text)
+        -- 2. Commit log (starts with SHA)
         if not found_label then
-          local content_start = line:find("%S", 9)
-          if content_start and content_start >= 19 and content_start < east_col then
-            -- This looks like a continuation of Summary or Reasoning
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, content_start - 1, {
+          if content:match("^%x%x%x%x%x%x%x") then
+            -- Commit hash
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, {
+              end_col = 15,
+              hl_group = "PackardCommitHash",
+            })
+            -- Message
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 16, {
               end_col = east_col,
               hl_group = "PackardAIValue",
             })
+          elseif content:match("No new commits") then
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, {
+              end_col = 8 + #"No new commits",
+              hl_group = "PackardStatusWarn",
+            })
+          elseif not found_label then
+            -- Continuation lines or other values
+            local content_start = line:find("%S", 9)
+            if content_start and content_start < east_col then
+              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, content_start - 1, {
+                end_col = east_col,
+                hl_group = "PackardAIValue",
+              })
+            end
           end
         end
 
-        -- 2. Specific line content (Risk value color overrides)
-        local content = line:sub(9)
+        -- AI specific highlights
+        if line:match("AI review in progress") then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, { end_col = 11, hl_group = "PackardStatusWarn" })
+        elseif content:match("%[R%] Re%-run") then
+          local pos_in_content = content:find("[R] Re-run", 1, true)
+          local pos_in_line = 8 + pos_in_content
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, pos_in_line - 1, {
+            end_col = pos_in_line - 1 + #"[R] Re-run",
+            hl_group = "PackardButton",
+          })
+        end
+
+        -- [A] Re-run highlight (legacy or if we use A for Re-run)
+        if content:find("[A] Re-run", 1, true) then
+          local pos_in_content = content:find("[A] Re-run", 1, true)
+          local pos_in_line = 8 + pos_in_content
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, pos_in_line - 1, {
+            end_col = pos_in_line - 1 + #"[A] Re-run",
+            hl_group = "PackardButton",
+          })
+        end
+
+        -- Risk value color overrides
         if content:match("^Risk:") then
           local risk = content:match("^Risk:%s+(%w+)")
           if risk then
@@ -507,17 +558,6 @@ function UI.apply_highlights(lines)
               })
             end
           end
-        elseif content:match("AI review in progress") then
-          -- Highlight the spinner (starts at byte 9, usually 3 bytes)
-          -- Actually spinner starts at content start (byte 9)
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, { end_col = 11, hl_group = "PackardStatusWarn" })
-        elseif content:find("[A] Re-run", 1, true) then
-          local pos_in_content = content:find("[A] Re-run", 1, true)
-          local pos_in_line = 8 + pos_in_content
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, pos_in_line - 1, {
-            end_col = pos_in_line - 1 + #"[A] Re-run",
-            hl_group = "PackardButton",
-          })
         end
       end
     elseif line:match("^    [●⚠⏳]") then -- Plugin rows
@@ -551,7 +591,7 @@ function UI.apply_highlights(lines)
             local commit_end = line:find(" ", commit_start)
             vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start - 1, {
               end_col = commit_end,
-                hl_group = "PackardCommitHash",
+              hl_group = "PackardCommitHash",
             })
 
             -- 4. Risk (if in pending tab)
@@ -621,6 +661,10 @@ function UI.render_installed(lines)
         string.format("    %s %-30s %-10s %-15s %-10s", icon, plugin.owner_repo, commit:sub(1, 7), branch, cooldown)
       )
       UI.line_map[#lines] = plugin.owner_repo
+
+      if UI.expanded_row == plugin.owner_repo and UI.expanded_type == "log" then
+        UI._render_log_expansion(lines, plugin.owner_repo)
+      end
     end
     table.insert(lines, "")
   end
@@ -699,9 +743,13 @@ function UI.render_pending(lines)
       )
       UI.line_map[#lines] = owner_repo
 
-      -- Render AI expansion if this row is expanded
+      -- Render expansion if this row is expanded
       if UI.expanded_row == owner_repo then
-        UI._render_ai_expansion(lines, owner_repo)
+        if UI.expanded_type == "ai" then
+          UI._render_ai_expansion(lines, owner_repo)
+        elseif UI.expanded_type == "log" then
+          UI._render_log_expansion(lines, owner_repo)
+        end
       end
     end
     table.insert(lines, "")
@@ -762,6 +810,42 @@ function UI._render_ai_expansion(lines, owner_repo)
 
     add_line("")
     add_line("[R] Re-run")
+  end
+
+  table.insert(lines, "    ╰" .. string.rep("─", total_border_cols) .. "╯")
+end
+
+UI._log_cache = {} -- Map owner_repo -> log_lines
+
+function UI._render_log_expansion(lines, owner_repo)
+  local log_lines = UI._log_cache[owner_repo]
+  if not log_lines then
+    return
+  end
+
+  local win_width = vim.api.nvim_win_get_width(UI.win)
+  local width = math.min(win_width - 8, 80)
+  local inner_width = width - 4
+
+  local title = " Commit Log "
+  local total_border_cols = width - 2
+  local title_cols = vim.fn.strdisplaywidth(title)
+  local left_cols = 1
+  local right_cols = total_border_cols - title_cols - left_cols
+  if right_cols < 0 then
+    right_cols = 0
+  end
+  local border_content = string.rep("─", left_cols) .. title .. string.rep("─", right_cols)
+  table.insert(lines, "    ╭" .. border_content .. "╮")
+
+  for _, l in ipairs(log_lines) do
+    local display_width = vim.fn.strdisplaywidth(l)
+    local padding = inner_width - display_width
+    if padding < 0 then
+      l = l:sub(1, inner_width - 3) .. "..."
+      padding = 0
+    end
+    table.insert(lines, "    │ " .. l .. string.rep(" ", padding) .. " │")
   end
 
   table.insert(lines, "    ╰" .. string.rep("─", total_border_cols) .. "╯")
@@ -990,6 +1074,87 @@ function UI.handle_compare()
   end
 end
 
+function UI.handle_log()
+  if UI.tab ~= "pending" and UI.tab ~= "installed" then
+    return
+  end
+  local line = vim.api.nvim_win_get_cursor(UI.win)[1]
+  local owner_repo = UI.line_map[line]
+  if not owner_repo then
+    return
+  end
+
+  if UI.expanded_row == owner_repo and UI.expanded_type == "log" then
+    UI.expanded_row = nil
+    UI.expanded_type = nil
+    UI.render()
+    return
+  end
+
+  -- Find the plugin
+  local plugin
+  for _, p in ipairs(UI.plugins) do
+    if p.owner_repo == owner_repo then
+      plugin = p
+      break
+    end
+  end
+  if not plugin then
+    return
+  end
+
+  local utils = require("packard.utils")
+  local path = utils.get_plugin_path(plugin.name)
+  local cmd = {
+    "git",
+    "log",
+    "--pretty=format:%h %s (%cr)",
+    "--abbrev-commit",
+    "--color=never",
+    "--no-show-signature",
+  }
+
+  if UI.tab == "pending" then
+    local s = State.read()
+    local entry = s.queue[owner_repo]
+    if not entry then
+      return
+    end
+    local plugin_name = owner_repo:match("/([^/]+)$")
+    local from = Lockfile.get_installed_commit(plugin_name)
+    if not from then
+      print("packard: cannot show log — no installed commit found for " .. plugin_name)
+      return
+    end
+    local to = entry.commit
+    table.insert(cmd, from .. ".." .. to)
+  else
+    table.insert(cmd, "-10") -- Show fewer lines when inline
+  end
+
+  -- Run git log
+  --[[@diagnostic disable-next-line: redundant-parameter]]
+  local obj = vim.system(cmd, { cwd = path }):wait(5000)
+  if obj.code ~= 0 then
+    print("packard: git log failed for " .. owner_repo)
+    return
+  end
+
+  local log_lines = {}
+  for l in obj.stdout:gmatch("[^\r\n]+") do
+    table.insert(log_lines, l)
+  end
+
+  if #log_lines == 0 then
+    table.insert(log_lines, "No new commits")
+  end
+
+  UI._log_cache[owner_repo] = log_lines
+  UI.expanded_row = owner_repo
+  UI.expanded_type = "log"
+  UI._do_render()
+end
+
 function UI.handle_ai_review(opts)
   opts = opts or {}
   if UI.tab ~= "pending" then
@@ -1001,14 +1166,16 @@ function UI.handle_ai_review(opts)
     return
   end
 
-  -- Toggle if same row and not forcing
-  if UI.expanded_row == owner_repo and not opts.force then
+  if UI.expanded_row == owner_repo and UI.expanded_type == "ai" and not opts.force then
     UI.expanded_row = nil
+    UI.expanded_type = nil
     UI.render()
     return
   end
 
   UI.expanded_row = owner_repo
+  UI.expanded_type = "ai"
+  UI.render()
 
   -- Check if we need to fetch
   local result = UI.ai_results[owner_repo]
@@ -1096,11 +1263,12 @@ function UI.render_help(lines)
   table.insert(lines, "    ?          Show this help")
   table.insert(lines, "")
   table.insert(lines, "    j/k        Navigate list")
-    table.insert(lines, "    A          Approve pending update")
-    table.insert(lines, "    X          Reject pending update (blacklist)")
-    table.insert(lines, "    gx         Compare changes in browser")
-    table.insert(lines, "    r          Toggle AI Review (inline)")
-    table.insert(lines, "    R          Force re-run AI Review")
+  table.insert(lines, "    <CR>       Show commit log (installed->pending / recent)")
+  table.insert(lines, "    A          Approve pending update")
+  table.insert(lines, "    X          Reject pending update (blacklist)")
+  table.insert(lines, "    gx         Compare changes in browser")
+  table.insert(lines, "    r          Toggle AI Review (inline)")
+  table.insert(lines, "    R          Force re-run AI Review")
   table.insert(lines, "")
   table.insert(lines, "    q/<Esc>    Close dashboard")
 end
