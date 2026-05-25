@@ -208,19 +208,19 @@ function UI.setup_keymaps()
       UI.render()
     end,
     -- Standard navigation handled by buffer defaults
-    ["<CR>"] = function()
+    ["A"] = function()
       UI.handle_approve()
     end,
-    ["r"] = function()
+    ["X"] = function()
       UI.handle_reject()
     end,
     ["gx"] = function()
       UI.handle_compare()
     end,
-    ["a"] = function()
+    ["r"] = function()
       UI.handle_ai_review()
     end,
-    ["A"] = function()
+    ["R"] = function()
       UI.handle_ai_review({ force = true })
     end,
   }
@@ -761,7 +761,7 @@ function UI._render_ai_expansion(lines, owner_repo)
     end
 
     add_line("")
-    add_line("[A] Re-run")
+    add_line("[R] Re-run")
   end
 
   table.insert(lines, "    ╰" .. string.rep("─", total_border_cols) .. "╯")
@@ -1096,11 +1096,11 @@ function UI.render_help(lines)
   table.insert(lines, "    ?          Show this help")
   table.insert(lines, "")
   table.insert(lines, "    j/k        Navigate list")
-  table.insert(lines, "    <CR>       Approve pending update")
-  table.insert(lines, "    r          Reject pending update (blacklist)")
-  table.insert(lines, "    gx         Compare changes in browser")
-  table.insert(lines, "    a          Toggle AI Review (inline)")
-  table.insert(lines, "    A          Force re-run AI Review")
+    table.insert(lines, "    A          Approve pending update")
+    table.insert(lines, "    X          Reject pending update (blacklist)")
+    table.insert(lines, "    gx         Compare changes in browser")
+    table.insert(lines, "    r          Toggle AI Review (inline)")
+    table.insert(lines, "    R          Force re-run AI Review")
   table.insert(lines, "")
   table.insert(lines, "    q/<Esc>    Close dashboard")
 end
