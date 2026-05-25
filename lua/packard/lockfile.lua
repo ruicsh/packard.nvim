@@ -50,9 +50,17 @@ end
 ---@return string|nil
 function Lockfile.get_installed_commit(name)
   local data = Lockfile.read()
-  if data[name] then
-    return data[name].ref
+
+  -- Neovim 0.12 format: data.plugins[name].rev
+  if data.plugins and data.plugins[name] then
+    return data.plugins[name].rev or data.plugins[name].ref
   end
+
+  -- Legacy/Mock format: data[name].ref
+  if data[name] then
+    return data[name].ref or data[name].rev
+  end
+
   return nil
 end
 
@@ -61,6 +69,9 @@ end
 ---@return boolean
 function Lockfile.has_plugin(name)
   local data = Lockfile.read()
+  if data.plugins and data.plugins[name] then
+    return true
+  end
   return data[name] ~= nil
 end
 
