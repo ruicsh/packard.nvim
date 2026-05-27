@@ -1,5 +1,8 @@
 # packard.nvim
 
+> [!WARNING]
+> **Work in Progress**: This project is currently under active development. APIs and features may change without notice. Use with caution in production environments.
+
 A security-first Neovim plugin manager that protects against supply chain attacks by enforcing a configurable cooldown period on new commits and requiring manual user review before any plugin is updated.
 
 ## Features
