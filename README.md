@@ -7,6 +7,7 @@ A security-first Neovim plugin manager that protects against supply chain attack
 
 ## Features
 
+- **Lazy Loading**: Deferred loading on keymaps, commands, events, or filetypes.
 - **Commit Pinning**: Everything is pinned to a specific SHA.
 - **Version Constraints**: Semver range support (`version = "1.*"`) — pin to latest stable tag automatically.
 - **Cooldown Queue**: New commits are held for a configurable period (default 30 days) before they can be applied.
@@ -41,8 +42,9 @@ require("packard").setup({
   },
   plugins = {
     "neovim/nvim-lspconfig",
-    { "tpope/vim-fugitive", minimum_release_age = 7 },
-    { "Saghen/blink.cmp", version = "1.*", dependencies = { "rafamadriz/friendly-snippets" } },
+    { "tpope/vim-fugitive", minimum_release_age = 7, cmd = "Git" },
+    { "Saghen/blink.cmp", version = "1.*", event = "InsertEnter", dependencies = { "rafamadriz/friendly-snippets" } },
+    { "folke/snacks.nvim", keys = { { "<leader><space>", function() Snacks.picker.smart() end, desc = "Files" } } },
     -- ... more plugins
   },
   -- Optional settings:
@@ -57,6 +59,37 @@ require("packard").setup({
     },
   },
 })
+```
+
+## Lazy Loading Support
+
+Packard supports standard `lazy.nvim`-style lazy-loading fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `keys` | `string\|string[]\|table` | Load on keymap(s). Supports simple strings or full mapping tables. |
+| `cmd` | `string\|string[]` | Load on command(s). |
+| `event` | `string\|string[]` | Load on autocmd event(s). |
+| `ft` | `string\|string[]` | Load on filetype(s). |
+| `lazy` | `boolean` | If `false`, load immediately on startup (default: `true`). |
+| `config` | `function` | Function called after plugin loads: `function(plugin, opts)`. |
+| `opts` | `table` | Options passed to the `config` function. |
+
+Example:
+```lua
+{
+  "folke/snacks.nvim",
+  keys = {
+    { "<leader><space>", function() Snacks.picker.smart() end, desc = "Smart Picker" },
+    { "<leader>,", function() Snacks.picker.buffers() end, desc = "Buffers" },
+  },
+  opts = {
+    picker = { enabled = true }
+  },
+  config = function(plugin, opts)
+    require("snacks").setup(opts)
+  end
+}
 ```
 
 ## Version Support

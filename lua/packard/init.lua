@@ -25,13 +25,184 @@ M._is_checking = false
 M._is_offline = false
 
 ---@private
+function M._load_and_config(plugin)
+  if package.loaded["packard.plugins." .. plugin.name] then
+    return
+  end
+  package.loaded["packard.plugins." .. plugin.name] = true
+
+  -- Load the plugin code
+  -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
+  pcall(vim.cmd.packadd, plugin.name)
+
+  -- Run config function if defined
+  if plugin.config then
+    local opts = plugin.opts or {}
+    -- If it's a string, we might want to try requiring it as a module
+    -- but for now we follow lazy.nvim pattern where config is a function
+    if type(plugin.config) == "function" then
+      plugin.config(plugin, opts)
+    end
+  end
+end
+
+---@private
+function M._setup_lazy_load()
+  for _, plugin in ipairs(M.plugins) do
+    -- Shadow the loop variable so closures capture the per-iteration value,
+    -- not the reused loop variable (Lua for-loop scoping semantics).
+    local plugin = plugin
+    local has_triggers = false
+
+    -- 1. Keys
+    if plugin.keys then
+      has_triggers = true
+      local keys = type(plugin.keys) == "table" and plugin.keys or { plugin.keys }
+      for i = 1, #keys do
+        local key = keys[i]
+        local lhs, rhs, mode
+        if type(key) == "string" then
+          lhs = key
+          mode = "n"
+        elseif type(key) == "table" then
+          -- lazy.nvim key format: { [mode?], lhs, [rhs], ... }
+          -- Detect if first element is a mode string (valid mode chars only)
+          local first = key[1]
+          if type(first) == "string" and first:match("^[nivxsotc]+$") then
+            mode = first
+            lhs = key[2]
+            rhs = key[3]
+          else
+            mode = key.mode or "n"
+            lhs = key[1]
+            rhs = key[2]
+          end
+        end
+
+        if lhs then
+          -- Build opts for the real mapping (after trigger fires)
+          -- Include all non-positional, non-consumed keys from the key spec
+          local real_map_opts = {}
+          if type(key) == "table" then
+            for k, v in pairs(key) do
+              if type(k) ~= "number" and k ~= "mode" then
+                real_map_opts[k] = v
+              end
+            end
+          end
+          real_map_opts.desc = real_map_opts.desc or string.format("packard: load %s", plugin.name)
+
+          -- Capture locals for the closure
+          local capture_lhs = lhs
+          local capture_mode = mode
+          local capture_rhs = rhs
+          local capture_opts = real_map_opts
+
+          vim.keymap.set(capture_mode, capture_lhs, function()
+            -- Delete the stub
+            pcall(vim.keymap.del, capture_mode, capture_lhs)
+            -- Load the plugin
+            M._load_and_config(plugin)
+            -- If user provided a RHS, set the real mapping and trigger it
+            if capture_rhs then
+              vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
+              -- Replay the keys
+              local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
+              vim.api.nvim_feedkeys(feed, "m", false)
+            else
+              -- Load-only trigger, just replay the original keys
+              -- which might now be mapped by the plugin itself
+              local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
+              vim.api.nvim_feedkeys(feed, "m", false)
+            end
+          end, { desc = string.format("packard: load %s", plugin.name) })
+        end
+      end
+    end
+
+    -- 2. Commands
+    if plugin.cmd then
+      has_triggers = true
+      local cmds = type(plugin.cmd) == "table" and plugin.cmd or { plugin.cmd }
+      for i = 1, #cmds do
+        local cmd = cmds[i]
+        -- Shadow the inner loop variable for closure capture
+        local cmd = cmd
+        vim.api.nvim_create_user_command(cmd, function(args)
+          -- Delete all stub commands for this plugin
+          for i2 = 1, #cmds do
+            local c = cmds[i2]
+            pcall(vim.api.nvim_del_user_command, c)
+          end
+          -- Load the plugin
+          M._load_and_config(plugin)
+          -- Replay the command
+          local bang = args.bang and "!" or ""
+          vim.cmd(cmd .. bang .. " " .. args.args)
+        end, {
+          bang = true,
+          nargs = "*",
+          range = true,
+          complete = function(_, line)
+            -- Delete stubs to allow real completion if any
+            for i2 = 1, #cmds do
+              local c = cmds[i2]
+              pcall(vim.api.nvim_del_user_command, c)
+            end
+            M._load_and_config(plugin)
+            return vim.fn.getcompletion(line, "cmdline")
+          end,
+          desc = string.format("packard: load %s", plugin.name),
+        })
+      end
+    end
+
+    -- 3. Events
+    if plugin.event then
+      has_triggers = true
+      local events = type(plugin.event) == "table" and plugin.event or { plugin.event }
+      vim.api.nvim_create_autocmd(events, {
+        group = vim.api.nvim_create_augroup("packard_load_" .. plugin.name, { clear = true }),
+        once = true,
+        callback = function()
+          M._load_and_config(plugin)
+        end,
+        desc = string.format("packard: load %s", plugin.name),
+      })
+    end
+
+    -- 4. Filetypes
+    if plugin.ft then
+      has_triggers = true
+      local fts = type(plugin.ft) == "table" and plugin.ft or { plugin.ft }
+      vim.api.nvim_create_autocmd("FileType", {
+        group = vim.api.nvim_create_augroup("packard_ft_load_" .. plugin.name, { clear = true }),
+        pattern = fts,
+        once = true,
+        callback = function()
+          M._load_and_config(plugin)
+        end,
+        desc = string.format("packard: load %s", plugin.name),
+      })
+    end
+
+    -- Eager load if lazy=false, or if no triggers are defined
+    -- (a plugin with no triggers and lazy=true would never load otherwise)
+    if plugin.lazy == false or not has_triggers then
+      M._load_and_config(plugin)
+    end
+  end
+end
+
+---@private
 function M._bootstrap()
   local function build_pack_spec(plugin)
     -- Create the spec for vim.pack.add
     local pack_spec = {
       src = plugin.url,
       name = plugin.name,
-      opt = plugin.lazy,
+      version = nil, -- Set below
+      data = plugin.spec.data, -- Pass through user data if any
     }
 
     -- Priority: lockfile SHA > commit > tag > version > branch
@@ -59,16 +230,6 @@ function M._bootstrap()
       pack_spec.version = plugin.branch
     end
 
-    -- T-1.2.1: Pass lazy-load fields to vim.pack.add
-    if plugin.spec then
-      for k, v in pairs(plugin.spec) do
-        -- Don't overwrite what we already set (src, name, version, opt)
-        -- Skip integer keys (like [1] = owner/repo) as they are not valid vim.pack fields
-        if type(k) == "string" and pack_spec[k] == nil then
-          pack_spec[k] = v
-        end
-      end
-    end
     return pack_spec
   end
 
@@ -337,6 +498,7 @@ function M.setup(opts)
   UI.config = M.config
 
   M._bootstrap()
+  M._setup_lazy_load()
   M._register_commands()
 
   -- T-7.1: Startup notification
