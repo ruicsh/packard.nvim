@@ -137,6 +137,7 @@ describe("Spec Loader", function()
 
     local notified = false
     local original_notify = vim.notify
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
     vim.notify = function(msg, level)
       if msg:find("failed to load") then
         notified = true

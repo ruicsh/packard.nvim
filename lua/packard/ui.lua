@@ -686,10 +686,14 @@ function UI.render_installed(lines)
       local commit = Lockfile.get_installed_commit(plugin.name) or "unknown"
       local branch = plugin.branch or "(default)"
       local cooldown = tostring(plugin.minimum_release_age) .. "d"
+      local name_display = plugin.owner_repo
+      if plugin.is_dependency then
+        name_display = name_display .. " [dep]"
+      end
 
       table.insert(
         lines,
-        string.format("    %s %-30s %-10s %-15s %-10s", icon, plugin.owner_repo, commit:sub(1, 7), branch, cooldown)
+        string.format("    %s %-30s %-10s %-15s %-10s", icon, name_display, commit:sub(1, 7), branch, cooldown)
       )
       UI.line_map[#lines] = plugin.owner_repo
 
@@ -757,6 +761,20 @@ function UI.render_pending(lines)
       local plugin_name = owner_repo:match("/([^/]+)$")
       local installed = Lockfile.get_installed_commit(plugin_name) or "???"
 
+      -- Find plugin to check is_dependency
+      local plugin
+      for _, p in ipairs(UI.plugins) do
+        if p.owner_repo == owner_repo then
+          plugin = p
+          break
+        end
+      end
+
+      local name_display = owner_repo
+      if plugin and plugin.is_dependency then
+        name_display = name_display .. " [dep]"
+      end
+
       local cooldown_text = entry.remaining_days and string.format("%d days remaining", entry.remaining_days)
         or "Eligible now"
 
@@ -765,7 +783,7 @@ function UI.render_pending(lines)
         string.format(
           "    %s %-26s %-8s %-8s %-22s %-10s",
           icon,
-          owner_repo,
+          name_display,
           entry.commit:sub(1, 7),
           get_pending_risk(owner_repo),
           cooldown_text,

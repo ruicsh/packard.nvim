@@ -45,7 +45,8 @@ function M._bootstrap()
     if plugin.spec then
       for k, v in pairs(plugin.spec) do
         -- Don't overwrite what we already set (src, name, version)
-        if pack_spec[k] == nil then
+        -- Skip integer keys (like [1] = owner/repo) as they are not valid vim.pack fields
+        if type(k) == "string" and pack_spec[k] == nil then
           pack_spec[k] = v
         end
       end

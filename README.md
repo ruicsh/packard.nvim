@@ -11,6 +11,7 @@ A security-first Neovim plugin manager that protects against supply chain attack
 - **Cooldown Queue**: New commits are held for a configurable period (default 30 days) before they can be applied.
 - **Manual Review**: Approve or reject updates after inspecting changes.
 - **AI Review Engine**: Optional inline AI analysis of diffs to identify security risks and breaking changes.
+- **Dependency Resolution**: Automatic recursive dependency injection and topological sorting for plugin load order.
 - **Parallel Fetch**: Non-blocking `git fetch` for update checking.
 - **Dashboard**: `lazy.nvim`-style UI for managing plugins with real-time status.
 - **Built on `vim.pack`**: Leverages Neovim 0.12+ native plugin management.
@@ -40,6 +41,7 @@ require("packard").setup({
   plugins = {
     "neovim/nvim-lspconfig",
     { "tpope/vim-fugitive", minimum_release_age = 7 },
+    { "Saghen/blink.cmp", dependencies = { "rafamadriz/friendly-snippets" } },
     -- ... more plugins
   },
   -- Optional settings:
