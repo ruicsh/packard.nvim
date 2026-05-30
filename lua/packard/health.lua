@@ -133,9 +133,13 @@ function Health.check()
           end
 
           if owner_repo then
-            vim.health.ok(string.format("'%s' requires '%s' (auto-resolved to %s)", plugin.owner_repo, module, owner_repo))
+            vim.health.ok(
+              string.format("'%s' requires '%s' (auto-resolved to %s)", plugin.owner_repo, module, owner_repo)
+            )
           else
-            vim.health.error(string.format("'%s' requires missing module '%s' (unresolvable)", plugin.owner_repo, module))
+            vim.health.error(
+              string.format("'%s' requires missing module '%s' (unresolvable)", plugin.owner_repo, module)
+            )
             missing_count = missing_count + 1
           end
         end

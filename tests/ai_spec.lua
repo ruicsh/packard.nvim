@@ -186,7 +186,9 @@ Let me know if you have questions.
 
   Helpers.it("parses content as array of {type, text} parts (anthropic-style for openai)", function()
     local body = vim.json.encode({
-      content = { { type = "text", text = '{"summary":"Array parts","risk":"Medium","reasoning":"via content[1].text"}' } },
+      content = {
+        { type = "text", text = '{"summary":"Array parts","risk":"Medium","reasoning":"via content[1].text"}' },
+      },
     })
     local result, err = AI.parse_llm_response("openai", body)
     Helpers.expect(err).to_be_nil()
@@ -207,7 +209,13 @@ Let me know if you have questions.
 
   Helpers.it("parses output[0].content[0].text (Responses API)", function()
     local body = vim.json.encode({
-      output = { { content = { { text = '{"summary":"Responses API","risk":"Low","reasoning":"via output[0].content[0].text"}' } } } },
+      output = {
+        {
+          content = {
+            { text = '{"summary":"Responses API","risk":"Low","reasoning":"via output[0].content[0].text"}' },
+          },
+        },
+      },
     })
     local result, err = AI.parse_llm_response("openai", body)
     Helpers.expect(err).to_be_nil()

@@ -67,8 +67,8 @@ function Deps.scan_requires(dir)
   end
 
   local patterns = {
-    'require%s*%(?%s*["\']([^"\']+)["\']%s*%)?',
-    'require%s*["\']([^"\']+)["\']',
+    "require%s*%(?%s*[\"']([^\"']+)[\"']%s*%)?",
+    "require%s*[\"']([^\"']+)[\"']",
   }
 
   for _, file in ipairs(files) do

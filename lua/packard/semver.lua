@@ -156,7 +156,11 @@ function Semver.to_range(spec)
       return { from = v, to = { major = v.major, minor = v.minor + 1, patch = 0 }, include_prerelease = false }
     else
       -- "1.2.3" -> tilde
-      return { from = v, to = { major = v.major, minor = v.minor + 1, patch = 0 }, include_prerelease = v.prerelease ~= nil }
+      return {
+        from = v,
+        to = { major = v.major, minor = v.minor + 1, patch = 0 },
+        include_prerelease = v.prerelease ~= nil,
+      }
     end
   end
 

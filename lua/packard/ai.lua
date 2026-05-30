@@ -88,7 +88,11 @@ local function extract_content(decoded)
   end
   -- Responses API: output[0].content[0].text
   if type(decoded.output) == "table" and decoded.output[1] and decoded.output[1].content then
-    if type(decoded.output[1].content) == "table" and decoded.output[1].content[1] and decoded.output[1].content[1].text then
+    if
+      type(decoded.output[1].content) == "table"
+      and decoded.output[1].content[1]
+      and decoded.output[1].content[1].text
+    then
       return decoded.output[1].content[1].text
     end
     if type(decoded.output[1].content) == "string" then

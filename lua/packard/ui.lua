@@ -715,10 +715,7 @@ function UI.render_installed(lines)
         name_display = name_display .. " [dep]"
       end
 
-      table.insert(
-        lines,
-        string.format(fmt, icon, name_display, commit:sub(1, 7), branch_display, cooldown)
-      )
+      table.insert(lines, string.format(fmt, icon, name_display, commit:sub(1, 7), branch_display, cooldown))
       UI.line_map[#lines] = plugin.owner_repo
 
       if UI.expanded_row == plugin.owner_repo and UI.expanded_type == "log" then
@@ -1005,10 +1002,7 @@ function UI.render_summary(lines)
   for _, u in ipairs(all_updates) do
     local date = u.timestamp:sub(1, 10)
     local age = UI._format_age(u.timestamp)
-    table.insert(
-      lines,
-      string.format(fmt, u.owner_repo, u.from:sub(1, 7), u.to:sub(1, 7), date, age)
-    )
+    table.insert(lines, string.format(fmt, u.owner_repo, u.from:sub(1, 7), u.to:sub(1, 7), date, age))
   end
 end
 
