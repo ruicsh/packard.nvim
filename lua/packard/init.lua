@@ -62,7 +62,21 @@ function M._bootstrap()
     -- defaults to confirm=true which prompts mid-startup and can hang
     -- or fail when run headless or from an init script.
     --[[@diagnostic disable-next-line: redundant-parameter]]
-    vim.pack.add(specs, { confirm = false })
+    local ok, err = pcall(vim.pack.add, specs, { confirm = false })
+    if not ok then
+      local err_msg = tostring(err)
+      -- Check for common git auth/network errors to set offline flag
+      if err_msg:match("Username") or err_msg:match("Device not configured") or err_msg:match("network") then
+        M._is_offline = true
+      end
+      vim.notify(
+        string.format(
+          "packard: failed to install plugins: %s\nAlready-installed plugins will still load. Run :Packard check to retry.",
+          err_msg
+        ),
+        vim.log.levels.ERROR
+      )
+    end
   end
 
   -- Persist initial state on first run so it's explicitly tracked

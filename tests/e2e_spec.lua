@@ -158,6 +158,31 @@ Helpers.describe("End-to-end flow", function()
     Lockfile.read = original_lockfile_read
     UI.close()
   end)
+
+  Helpers.it("recovers gracefully when vim.pack.add fails", function()
+    -- Mock vim.pack.add to throw a git auth error
+    local add_called = false
+    vim.pack.add = function()
+      add_called = true
+      error("fatal: could not read Username for 'https://github.com': Device not configured")
+    end
+
+    -- Setup must not crash
+    local setup_ok, setup_err = pcall(packard.setup, {
+      plugins = { "user/repo" },
+      self_management = false,
+    })
+
+    if not setup_ok then
+      print("Setup failed: " .. tostring(setup_err))
+    end
+    Helpers.expect(setup_ok).to_be_truthy()
+    Helpers.expect(add_called).to_be(true)
+
+    -- Should have detected offline status from error message
+    --[[@diagnostic disable-next-line: invisible]]
+    Helpers.expect(packard._is_offline).to_be_truthy()
+  end)
 end)
 
 -- Restore global mocks
