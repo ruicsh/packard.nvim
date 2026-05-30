@@ -36,4 +36,50 @@ function Git.check_network(url, timeout)
   return obj.code == 0
 end
 
+---List tags for a remote repository
+---@param url string
+---@param timeout number|nil
+---@return {tag: string, sha: string}[]
+function Git.list_tags(url, timeout)
+  timeout = timeout or 5000
+  --[[@diagnostic disable-next-line: redundant-parameter]]
+  local obj = vim.system({ "git", "ls-remote", "--tags", url }):wait(timeout)
+  if obj.code ~= 0 then
+    return {}
+  end
+
+  return Git.parse_ls_remote_tags(obj.stdout)
+end
+
+---Parse tags from git ls-remote --tags output
+---@param stdout string
+---@return {tag: string, sha: string}[]
+function Git.parse_ls_remote_tags(stdout)
+  local tags = {}
+  local tag_map = {}
+
+  for line in stdout:gmatch("[^\r\n]+") do
+    local sha, ref = line:match("^(%x+)%s+(%S+)$")
+    if sha and ref then
+      local tag = ref:match("^refs/tags/(.+)$")
+      if tag then
+        local base_tag = tag:gsub("%^{}$", "")
+        local is_deref = tag ~= base_tag
+
+        if is_deref then
+          tag_map[base_tag] = sha
+        elseif not tag_map[tag] then
+          tag_map[tag] = sha
+        end
+      end
+    end
+  end
+
+  for tag, sha in pairs(tag_map) do
+    table.insert(tags, { tag = tag, sha = sha })
+  end
+
+  return tags
+end
+
 return Git

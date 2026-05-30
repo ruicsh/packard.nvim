@@ -5,6 +5,7 @@ local ai_cache_path = vim.fs.joinpath(vim.fn.stdpath("state"), "packard-ai-cache
 
 ---@class PendingEntry
 ---@field commit string
+---@field tag string|nil
 ---@field discovered_at string ISO 8601
 
 ---@class UpdateLogEntry
@@ -191,10 +192,12 @@ end
 ---@param owner_repo string
 ---@param sha string
 ---@param timestamp string|nil ISO 8601, defaults to now
-function State.queue_pending(owner_repo, sha, timestamp)
+---@param tag string|nil
+function State.queue_pending(owner_repo, sha, timestamp, tag)
   local s = State.read()
   s.queue[owner_repo] = {
     commit = sha,
+    tag = tag,
     discovered_at = timestamp or os.date("!%Y-%m-%dT%H:%M:%SZ") --[[@as string]],
   }
   State.write()

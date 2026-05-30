@@ -8,6 +8,7 @@ A security-first Neovim plugin manager that protects against supply chain attack
 ## Features
 
 - **Commit Pinning**: Everything is pinned to a specific SHA.
+- **Version Constraints**: Semver range support (`version = "1.*"`) — pin to latest stable tag automatically.
 - **Cooldown Queue**: New commits are held for a configurable period (default 30 days) before they can be applied.
 - **Manual Review**: Approve or reject updates after inspecting changes.
 - **AI Review Engine**: Optional inline AI analysis of diffs to identify security risks and breaking changes.
@@ -41,7 +42,7 @@ require("packard").setup({
   plugins = {
     "neovim/nvim-lspconfig",
     { "tpope/vim-fugitive", minimum_release_age = 7 },
-    { "Saghen/blink.cmp", dependencies = { "rafamadriz/friendly-snippets" } },
+    { "Saghen/blink.cmp", version = "1.*", dependencies = { "rafamadriz/friendly-snippets" } },
     -- ... more plugins
   },
   -- Optional settings:
@@ -57,6 +58,21 @@ require("packard").setup({
   },
 })
 ```
+
+## Version Support
+
+Packard supports various ways to pin your plugins:
+
+| Field | Example | Description |
+|---|---|---|
+| `version` | `"1.*"`, `"^2.0"`, `"~1.2.3"` | Semver range — resolves to latest matching git tag |
+| `tag` | `"v1.9.2"` | Exact tag pin |
+| `commit` | `"abc1234..."` | Exact commit SHA pin (highest priority) |
+| `branch` | `"dev"` | Track a specific branch (rolling) |
+
+**Priority:** `commit` > `tag` > `version` > `branch` > default branch HEAD.
+
+Semver ranges follow [lazy.nvim](https://github.com/folke/lazy.nvim) conventions. Pre-release tags (e.g., `-beta`) are excluded from ranges unless the range explicitly starts with a pre-release.
 
 ## Usage
 

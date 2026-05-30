@@ -7,6 +7,8 @@ local Fetch = {}
 ---@field owner_repo string
 ---@field success boolean
 ---@field new_sha string|nil
+---@field new_tag string|nil
+---@field tag_sha string|nil
 ---@field error string|nil
 ---@field anomaly boolean
 ---@field force_push boolean|nil
@@ -55,11 +57,17 @@ function Fetch.check_all(plugins, on_progress)
   local total = #plugins
   local jobs = {}
 
-  -- Pre-resolve default branches in parallel for plugins that don't have one specified
+  -- Pre-resolve default branches and tags in parallel
   local branch_jobs = {}
+  local tag_jobs = {}
   for i, plugin in ipairs(plugins) do
-    if not plugin.branch then
+    if not plugin.branch and not plugin.version then
       branch_jobs[i] = vim.system({ "git", "ls-remote", "--symref", plugin.url, "HEAD" })
+    elseif plugin.version and not plugin.branch then
+      -- S2: Combine ls-remote calls for default branch and tags
+      tag_jobs[i] = vim.system({ "git", "ls-remote", "--symref", "--tags", plugin.url })
+    elseif plugin.version then
+      tag_jobs[i] = vim.system({ "git", "ls-remote", "--tags", plugin.url })
     end
   end
 
@@ -86,6 +94,10 @@ function Fetch.check_all(plugins, on_progress)
     if vim.fn.isdirectory(plugin_path) == 0 then
       -- Will be handled in the collection loop below
       jobs[i] = { plugin = plugin, missing = true }
+    elseif plugin.version then
+      -- S1: For version-tracked plugins, we don't need to fetch a branch.
+      -- Tag resolution is handled via ls-remote --tags (tag_jobs).
+      jobs[i] = { plugin = plugin, no_fetch = true }
     else
       -- T-1.1.4: Resolve default branch if not specified
       local branch = plugin.branch or resolved_branches[i] or "HEAD"
@@ -108,6 +120,39 @@ function Fetch.check_all(plugins, on_progress)
     if item.missing then
       -- Plugin not installed on disk
       result.error = "not installed"
+    elseif item.no_fetch then
+      -- S1: Version-tracked plugin, already handled tags
+      if plugin.version and tag_jobs[i] then
+        local tag_obj = tag_jobs[i]:wait(5000)
+        if tag_obj.code == 0 then
+          -- S2: Parse default branch if it was a combined job
+          if not plugin.branch then
+            for line in tag_obj.stdout:gmatch("[^\r\n]+") do
+              local branch = line:match("^ref: refs/heads/(%S+)%s+HEAD$")
+              if branch then
+                resolved_branches[i] = branch
+                break
+              end
+            end
+          end
+
+          local tags = Git.parse_ls_remote_tags(tag_obj.stdout)
+          local Semver = require("packard.semver")
+          local range = Semver.to_range(plugin.version)
+          local best = Semver.pick_best(tags, range)
+          if best then
+            result.success = true
+            result.new_tag = best.tag
+            result.tag_sha = best.sha
+          else
+            result.error = "no matching version found"
+          end
+        else
+          result.error = "git ls-remote --tags failed"
+        end
+      else
+        result.success = true -- Nothing to do
+      end
     else
       local obj = item.job:wait()
 
@@ -124,7 +169,10 @@ function Fetch.check_all(plugins, on_progress)
           result.success = true
           result.new_sha = sha_obj.stdout:gsub("%s+", "")
           -- Check if force-push removed the installed commit from history
-          check_force_push(plugin, result)
+          -- Only applicable for branch-tracked plugins (no version constraint)
+          if not plugin.version then
+            check_force_push(plugin, result)
+          end
         else
           -- Maybe it's not origin/branch but just FETCH_HEAD
           local fh_obj = vim
@@ -136,7 +184,9 @@ function Fetch.check_all(plugins, on_progress)
             result.success = true
             result.new_sha = fh_obj.stdout:gsub("%s+", "")
             -- Check if force-push removed the installed commit from history
-            check_force_push(plugin, result)
+            if not plugin.version then
+              check_force_push(plugin, result)
+            end
           else
             result.error = "git rev-parse failed"
           end

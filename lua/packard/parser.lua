@@ -5,6 +5,9 @@ local Parser = {}
 ---@field name string
 ---@field url string
 ---@field branch string|nil
+---@field version string|nil
+---@field tag string|nil
+---@field commit string|nil
 ---@field minimum_release_age number
 ---@field lazy boolean
 ---@field priority number|nil
@@ -80,6 +83,35 @@ function Parser.parse_all(plugins, defaults)
 
     -- Field extraction
     local branch = spec.branch
+    local tag = spec.tag
+    if tag and type(tag) ~= "string" then
+      error(string.format("packard: 'tag' for '%s' must be a string", owner_repo))
+    end
+
+    local commit = spec.commit
+    if commit then
+      if type(commit) ~= "string" then
+        error(string.format("packard: 'commit' for '%s' must be a string", owner_repo))
+      end
+      if not commit:match("^%x+$") then
+        error(string.format("packard: invalid commit SHA '%s' for '%s'", commit, owner_repo))
+      end
+    end
+
+    local version = spec.version
+    if version == nil and not tag and not commit and not branch then
+      version = defaults.version
+    end
+    if version == false then
+      version = nil
+    end
+
+    if version then
+      local Semver = require("packard.semver")
+      if not Semver.to_range(version) then
+        error(string.format("packard: invalid version constraint '%s' for '%s'", version, owner_repo))
+      end
+    end
 
     local min_age = spec.minimum_release_age or defaults.minimum_release_age or 30
     if type(min_age) ~= "number" or min_age < 0 then
@@ -125,6 +157,9 @@ function Parser.parse_all(plugins, defaults)
       name = name,
       url = url,
       branch = branch,
+      version = version,
+      tag = tag,
+      commit = commit,
       minimum_release_age = min_age,
       lazy = lazy,
       priority = spec.priority,
@@ -178,6 +213,15 @@ function Parser.parse_all(plugins, defaults)
 
             if dep_spec.branch ~= nil and existing.branch == nil then
               existing.branch = dep_spec.branch
+            end
+            if dep_spec.version ~= nil and existing.version == nil then
+              existing.version = dep_spec.version
+            end
+            if dep_spec.tag ~= nil and existing.tag == nil then
+              existing.tag = dep_spec.tag
+            end
+            if dep_spec.commit ~= nil and existing.commit == nil then
+              existing.commit = dep_spec.commit
             end
           else
             existing.lazy = false

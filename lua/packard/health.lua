@@ -103,6 +103,49 @@ function Health.check()
       vim.health.warn(string.format("'%s': directory missing at %s", plugin.owner_repo, path))
     end
   end
+
+  -- Dependencies
+  vim.health.start("Dependencies")
+  local Deps = require("packard.deps")
+  local available = Deps.build_available_set()
+  local missing_count = 0
+
+  for _, plugin in ipairs(packard.plugins) do
+    local path = Utils.get_plugin_path(plugin.name)
+    if vim.fn.isdirectory(path) == 1 then
+      local requires = Deps.scan_requires(path)
+      for module in pairs(requires) do
+        local is_available = available[module]
+        if not is_available then
+          local parts = vim.split(module, "%.")
+          if #parts > 1 and available[parts[1]] then
+            is_available = true
+          end
+        end
+
+        if not is_available then
+          local owner_repo = Deps.KNOWN_MODULES[module]
+          if not owner_repo then
+            local parts = vim.split(module, "%.")
+            if #parts > 1 then
+              owner_repo = Deps.KNOWN_MODULES[parts[1]]
+            end
+          end
+
+          if owner_repo then
+            vim.health.ok(string.format("'%s' requires '%s' (auto-resolved to %s)", plugin.owner_repo, module, owner_repo))
+          else
+            vim.health.error(string.format("'%s' requires missing module '%s' (unresolvable)", plugin.owner_repo, module))
+            missing_count = missing_count + 1
+          end
+        end
+      end
+    end
+  end
+
+  if missing_count == 0 then
+    vim.health.ok("All runtime dependencies resolved or available")
+  end
 end
 
 return Health

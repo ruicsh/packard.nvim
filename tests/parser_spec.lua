@@ -279,11 +279,65 @@ local function test_complex_dependencies()
   assert(packard.plugins[5].owner_repo == "user/main")
 end
 
+local function test_version_fields()
+  print("Testing version fields...")
+
+  -- 1. Explicit version, tag, commit
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { "owner/v", version = "1.*" },
+      { "owner/t", tag = "v1.2.3" },
+      { "owner/c", commit = "abcdef" },
+    },
+  })
+
+  -- Sort: c, t, v
+  assert(packard.plugins[1].owner_repo == "owner/c")
+  assert(packard.plugins[1].commit == "abcdef")
+  assert(packard.plugins[2].owner_repo == "owner/t")
+  assert(packard.plugins[2].tag == "v1.2.3")
+  assert(packard.plugins[3].owner_repo == "owner/v")
+  assert(packard.plugins[3].version == "1.*")
+
+  -- 2. Defaults
+  packard.setup({
+    self_management = false,
+    defaults = { version = "*" },
+    plugins = {
+      "owner/a",
+      { "owner/b", branch = "dev" },
+      { "owner/c", version = "1.0" },
+      { "owner/d", version = false },
+    },
+  })
+
+  -- alphabetical order of owner_repo: a, b, c, d
+  assert(packard.plugins[1].owner_repo == "owner/a")
+  assert(packard.plugins[1].version == "*")
+
+  assert(packard.plugins[2].owner_repo == "owner/b")
+  assert(packard.plugins[2].branch == "dev")
+  assert(packard.plugins[2].version == nil) -- branch overrides default version
+
+  assert(packard.plugins[3].owner_repo == "owner/c")
+  assert(packard.plugins[3].version == "1.0") -- explicit overrides default
+
+  assert(packard.plugins[4].owner_repo == "owner/d")
+  assert(packard.plugins[4].version == nil) -- version = false disables default
+
+  -- 3. Invalid version error
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { "a/b", version = ">>1.0" } } })
+  end, "invalid version constraint")
+end
+
 test_normalization()
 test_defaults_and_overrides()
 test_lazy_load_fields()
 test_errors()
 test_dependencies()
 test_complex_dependencies()
+test_version_fields()
 
 print("Parser tests passed!")

@@ -34,10 +34,27 @@ function M._bootstrap()
       opt = plugin.lazy,
     }
 
-    -- Check lockfile for pinned version
+    -- Priority: lockfile SHA > commit > tag > version > branch
     local locked_sha = Lockfile.get_installed_commit(plugin.name)
     if locked_sha then
       pack_spec.version = locked_sha
+    elseif plugin.commit then
+      pack_spec.version = plugin.commit
+    elseif plugin.tag then
+      pack_spec.version = plugin.tag
+    elseif plugin.version then
+      -- Resolve version constraint to a tag
+      local Semver = require("packard.semver")
+      local Git = require("packard.git")
+      local tag_timeout = (M.config and M.config.defaults and M.config.defaults.tag_timeout) or 5000
+      local tags = Git.list_tags(plugin.url, tag_timeout)
+      local range = Semver.to_range(plugin.version)
+      local best = Semver.pick_best(tags, range)
+      if best then
+        pack_spec.version = best.tag
+      elseif plugin.branch then
+        pack_spec.version = plugin.branch
+      end
     elseif plugin.branch then
       pack_spec.version = plugin.branch
     end
@@ -90,6 +107,14 @@ function M._bootstrap()
         vim.log.levels.ERROR
       )
     end
+  end
+
+  -- Auto-resolve undeclared dependencies
+  local Deps = require("packard.deps")
+  local new_deps = Deps.verify_and_install(M.plugins)
+  if #new_deps > 0 then
+    -- Add to tracked plugins for future update checks
+    vim.list_extend(M.plugins, new_deps)
   end
 
   -- Persist initial state on first run so it's explicitly tracked
@@ -374,7 +399,7 @@ function M.check()
   M._is_offline = false
   local new_count = 0
   for _, res in ipairs(results) do
-    if res.success and res.new_sha then
+    if res.success then
       -- Find plugin to get its name (for lockfile check) and min_age
       local plugin
       for _, p in ipairs(M.plugins) do
@@ -386,8 +411,20 @@ function M.check()
 
       if plugin then
         local installed = Lockfile.get_installed_commit(plugin.name)
-        if installed ~= res.new_sha then
-          Cooldown.register_commit(plugin.owner_repo, res.new_sha)
+        local target_sha
+        local target_tag
+
+        if plugin.commit or plugin.tag then
+          -- Pinned to specific commit or tag, no auto-updates
+        elseif plugin.version then
+          target_sha = res.tag_sha
+          target_tag = res.new_tag
+        else
+          target_sha = res.new_sha
+        end
+
+        if target_sha and installed ~= target_sha then
+          Cooldown.register_commit(plugin.owner_repo, target_sha, target_tag)
           new_count = new_count + 1
         end
       end

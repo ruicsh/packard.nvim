@@ -4,7 +4,8 @@ local Cooldown = {}
 ---Register a new commit in the cooldown queue
 ---@param owner_repo string
 ---@param sha string
-function Cooldown.register_commit(owner_repo, sha)
+---@param tag string|nil
+function Cooldown.register_commit(owner_repo, sha, tag)
   -- Check blacklist first
   if State.is_blacklisted(owner_repo, sha) then
     return
@@ -28,7 +29,7 @@ function Cooldown.register_commit(owner_repo, sha)
     -- We keep the current timestamp as discovery for the NEW commit
   end
 
-  State.queue_pending(owner_repo, sha)
+  State.queue_pending(owner_repo, sha, nil, tag)
 end
 
 ---Check if a commit is eligible for review
@@ -93,6 +94,7 @@ function Cooldown.get_status(plugins)
     else
       result.cooldown[owner_repo] = {
         commit = entry.commit,
+        tag = entry.tag,
         remaining_days = math.ceil(remaining / 86400),
       }
     end

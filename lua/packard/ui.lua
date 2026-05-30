@@ -684,7 +684,15 @@ function UI.render_installed(lines)
     table.insert(lines, string.format("  %s (%d)", title, #plugins))
     for _, plugin in ipairs(plugins) do
       local commit = Lockfile.get_installed_commit(plugin.name) or "unknown"
-      local branch = plugin.branch or "(default)"
+      local branch_display = plugin.branch or "(default)"
+      if plugin.commit then
+        branch_display = "pin:" .. plugin.commit:sub(1, 7)
+      elseif plugin.tag then
+        branch_display = "tag:" .. plugin.tag
+      elseif plugin.version then
+        branch_display = "ver:" .. plugin.version
+      end
+
       local cooldown = tostring(plugin.minimum_release_age) .. "d"
       local name_display = plugin.owner_repo
       if plugin.is_dependency then
@@ -693,7 +701,7 @@ function UI.render_installed(lines)
 
       table.insert(
         lines,
-        string.format("    %s %-30s %-10s %-15s %-10s", icon, name_display, commit:sub(1, 7), branch, cooldown)
+        string.format("    %s %-30s %-10s %-15s %-10s", icon, name_display, commit:sub(1, 7), branch_display, cooldown)
       )
       UI.line_map[#lines] = plugin.owner_repo
 
@@ -778,13 +786,15 @@ function UI.render_pending(lines)
       local cooldown_text = entry.remaining_days and string.format("%d days remaining", entry.remaining_days)
         or "Eligible now"
 
+      local target_display = entry.tag or entry.commit:sub(1, 7)
+
       table.insert(
         lines,
         string.format(
-          "    %s %-26s %-8s %-8s %-22s %-10s",
+          "    %s %-26s %-10s %-8s %-22s %-10s",
           icon,
           name_display,
-          entry.commit:sub(1, 7),
+          target_display,
           get_pending_risk(owner_repo),
           cooldown_text,
           installed:sub(1, 7)
