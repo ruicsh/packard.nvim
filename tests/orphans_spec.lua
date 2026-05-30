@@ -10,7 +10,7 @@ describe("Orphans", function()
     end)
 
     local spec = {
-      { name = "packard.nvim", owner_repo = "RuiCostaPT/packard.nvim" },
+      { name = "packard.nvim", owner_repo = "ruicsh/packard.nvim" },
       { name = "plenary.nvim", owner_repo = "nvim-lua/plenary.nvim" },
       { name = "telescope.nvim", owner_repo = "nvim-telescope/telescope.nvim" },
     }

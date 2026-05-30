@@ -292,13 +292,13 @@ function M.setup(opts)
     local found = false
     for _, p in ipairs(final_specs) do
       local source = type(p) == "string" and p or p[1]
-      if source:match("RuiCostaPT/packard.nvim") then
+      if source:match("ruicsh/packard.nvim") then
         found = true
         break
       end
     end
     if not found then
-      table.insert(final_specs, 1, "RuiCostaPT/packard.nvim")
+      table.insert(final_specs, 1, "ruicsh/packard.nvim")
     end
   end
 

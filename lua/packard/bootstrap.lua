@@ -24,7 +24,7 @@ function M.init()
         "git",
         "clone",
         "--filter=blob:none",
-        "https://github.com/RuiCostaPT/packard.nvim.git",
+        "https://github.com/ruicsh/packard.nvim.git",
         packpath,
       })
     end
