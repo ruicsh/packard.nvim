@@ -668,7 +668,21 @@ function UI.render_installed(lines)
     anomalies = {},
   }
 
+  local function get_branch_display(plugin)
+    local branch_display = plugin.branch or "(default)"
+    if plugin.commit then
+      branch_display = "pin:" .. plugin.commit:sub(1, 7)
+    elseif plugin.tag then
+      branch_display = "tag:" .. plugin.tag
+    elseif plugin.version then
+      branch_display = "ver:" .. plugin.version
+    end
+    return branch_display
+  end
+
+  -- Default column widths; expand dynamically if content is wider
   local max_name_len = 30
+  local max_branch_len = 15
   for _, plugin in ipairs(UI.plugins) do
     local path = require("packard.utils").get_plugin_path(plugin.name)
     if vim.fn.isdirectory(path) == 0 then
@@ -682,6 +696,7 @@ function UI.render_installed(lines)
       name_display = name_display .. " [dep]"
     end
     max_name_len = math.max(max_name_len, vim.fn.strdisplaywidth(name_display))
+    max_branch_len = math.max(max_branch_len, vim.fn.strdisplaywidth(get_branch_display(plugin)))
   end
 
   local function render_section(title, plugins, icon)
@@ -689,17 +704,10 @@ function UI.render_installed(lines)
       return
     end
     table.insert(lines, string.format("  %s (%d)", title, #plugins))
-    local fmt = string.format("    %%s %%-%ds  %%-10s  %%-15s  %%-10s", max_name_len)
+    local fmt = string.format("    %%s %%-%ds  %%-10s  %%-%ds  %%-10s", max_name_len, max_branch_len)
     for _, plugin in ipairs(plugins) do
       local commit = Lockfile.get_installed_commit(plugin.name) or "unknown"
-      local branch_display = plugin.branch or "(default)"
-      if plugin.commit then
-        branch_display = "pin:" .. plugin.commit:sub(1, 7)
-      elseif plugin.tag then
-        branch_display = "tag:" .. plugin.tag
-      elseif plugin.version then
-        branch_display = "ver:" .. plugin.version
-      end
+      local branch_display = get_branch_display(plugin)
 
       local cooldown = tostring(plugin.minimum_release_age) .. "d"
       local name_display = plugin.owner_repo
@@ -764,6 +772,7 @@ function UI.render_pending(lines)
     end
   end
 
+  -- Default column widths; expand dynamically if content is wider
   local max_name_len = 26
   local all_pending = vim.tbl_extend("force", status.eligible, status.cooldown)
   for owner_repo, _ in pairs(all_pending) do
@@ -959,6 +968,7 @@ function UI.render_summary(lines)
     return
   end
 
+  -- Default column width; expands dynamically if content is wider
   local max_name_len = 30
   -- Group by plugin, but let's just list them sorted by timestamp
   local all_updates = {}

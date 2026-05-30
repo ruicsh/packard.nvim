@@ -198,6 +198,62 @@ Helpers.describe("UI Dashboard", function()
     UI.close()
   end)
 
+  Helpers.it("aligns columns correctly with long branch names", function()
+    local plugins = {
+      {
+        name = "short-name",
+        owner_repo = "a/short",
+        branch = "main",
+        minimum_release_age = 30,
+      },
+      {
+        name = "long-branch",
+        owner_repo = "b/long",
+        branch = "very-long-feature-branch-name",
+        minimum_release_age = 30,
+      },
+    }
+
+    local old_isdirectory = vim.fn.isdirectory
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    UI.open(plugins, "installed")
+    UI._do_render()
+
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local short_line = ""
+    local long_line = ""
+
+    for _, line in ipairs(lines) do
+      if line:match("a/short") then
+        short_line = line
+      end
+      if line:match("b/long") then
+        long_line = line
+      end
+    end
+
+    -- The branch column should be aligned
+    -- Format: icon name commit branch age
+    -- "    ● a/short                         abc1234     main                            30d"
+    -- "    ● b/long                          abc1234     very-long-feature-branch-name   30d"
+
+    -- We can check if the '30d' (age) starts at the same column
+    local short_age_pos = short_line:find("30d")
+    local long_age_pos = long_line:find("30d")
+
+    Helpers.expect(short_age_pos).to_be_truthy()
+    Helpers.expect(long_age_pos).to_be_truthy()
+    Helpers.expect(short_age_pos).to_be(long_age_pos)
+
+    -- Cleanup
+    vim.fn.isdirectory = old_isdirectory
+    UI.close()
+  end)
+
   Helpers.describe("handle_log", function()
     Helpers.it("shows log between installed and pending in Pending tab (inline)", function()
       local plugin =
