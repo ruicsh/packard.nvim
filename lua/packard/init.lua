@@ -26,8 +26,7 @@ M._is_offline = false
 
 ---@private
 function M._bootstrap()
-  local specs = {}
-  for _, plugin in ipairs(M.plugins) do
+  local function build_pack_spec(plugin)
     -- Create the spec for vim.pack.add
     local pack_spec = {
       src = plugin.url,
@@ -51,28 +50,40 @@ function M._bootstrap()
         end
       end
     end
-
-    table.insert(specs, pack_spec)
+    return pack_spec
   end
 
   -- Call Neovim's built-in pack manager
   if vim.pack and vim.pack.add then
-    -- confirm=false because packard manages plugins programmatically:
-    -- user opted in by listing them in packard.setup().  vim.pack.add
-    -- defaults to confirm=true which prompts mid-startup and can hang
-    -- or fail when run headless or from an init script.
-    --[[@diagnostic disable-next-line: redundant-parameter]]
-    local ok, err = pcall(vim.pack.add, specs, { confirm = false })
-    if not ok then
-      local err_msg = tostring(err)
-      -- Check for common git auth/network errors to set offline flag
-      if err_msg:match("Username") or err_msg:match("Device not configured") or err_msg:match("network") then
-        M._is_offline = true
+    local failed = {}
+    for _, plugin in ipairs(M.plugins) do
+      local pack_spec = build_pack_spec(plugin)
+      -- confirm=false because packard manages plugins programmatically:
+      -- user opted in by listing them in packard.setup().  vim.pack.add
+      -- defaults to confirm=true which prompts mid-startup and can hang
+      -- or fail when run headless or from an init script.
+      --[[@diagnostic disable-next-line: redundant-parameter]]
+      local ok, err = pcall(vim.pack.add, { pack_spec }, { confirm = false })
+      if not ok then
+        local err_msg = tostring(err)
+        table.insert(failed, { owner_repo = plugin.owner_repo, error = err_msg })
+        -- Check for common git auth/network errors to set offline flag
+        if err_msg:match("Username") or err_msg:match("Device not configured") or err_msg:match("network") then
+          M._is_offline = true
+        end
+      end
+    end
+
+    if #failed > 0 then
+      local lines = {}
+      for _, f in ipairs(failed) do
+        table.insert(lines, string.format("  - %s: %s", f.owner_repo, f.error))
       end
       vim.notify(
         string.format(
-          "packard: failed to install plugins: %s\nAlready-installed plugins will still load. Run :Packard check to retry.",
-          err_msg
+          "packard: failed to install %d plugin(s):\n%s\nAlready-installed plugins will still load. Run :Packard check to retry.",
+          #failed,
+          table.concat(lines, "\n")
         ),
         vim.log.levels.ERROR
       )

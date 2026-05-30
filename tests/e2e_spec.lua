@@ -183,6 +183,35 @@ Helpers.describe("End-to-end flow", function()
     --[[@diagnostic disable-next-line: invisible]]
     Helpers.expect(packard._is_offline).to_be_truthy()
   end)
+
+  Helpers.it("installs remaining plugins when one fails", function()
+    -- Reset offline flag
+    --[[@diagnostic disable-next-line: invisible]]
+    packard._is_offline = false
+
+    local installed = {}
+    local bad_attempted = false
+    vim.pack.add = function(specs)
+      local name = specs[1].name
+      if name == "repo" then
+        bad_attempted = true
+        error("fatal: could not read Username for 'https://github.com': Device not configured")
+      end
+      table.insert(installed, name)
+    end
+
+    packard.setup({
+      plugins = { "good1/repo1", "bad/repo", "good2/repo2" },
+      self_management = false,
+    })
+
+    Helpers.expect(bad_attempted).to_be_truthy()
+    Helpers.expect(#installed).to_be(2)
+    Helpers.expect(installed[1]).to_be("repo1")
+    Helpers.expect(installed[2]).to_be("repo2")
+    --[[@diagnostic disable-next-line: invisible]]
+    Helpers.expect(packard._is_offline).to_be_truthy()
+  end)
 end)
 
 -- Restore global mocks
