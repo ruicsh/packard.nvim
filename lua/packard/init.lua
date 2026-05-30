@@ -31,6 +31,7 @@ function M._bootstrap()
     local pack_spec = {
       src = plugin.url,
       name = plugin.name,
+      opt = plugin.lazy,
     }
 
     -- Check lockfile for pinned version
@@ -44,7 +45,7 @@ function M._bootstrap()
     -- T-1.2.1: Pass lazy-load fields to vim.pack.add
     if plugin.spec then
       for k, v in pairs(plugin.spec) do
-        -- Don't overwrite what we already set (src, name, version)
+        -- Don't overwrite what we already set (src, name, version, opt)
         -- Skip integer keys (like [1] = owner/repo) as they are not valid vim.pack fields
         if type(k) == "string" and pack_spec[k] == nil then
           pack_spec[k] = v

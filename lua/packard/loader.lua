@@ -36,8 +36,26 @@ function Loader.load_file(filepath, modname)
 
   if type(result) == "table" then
     -- Detect array of specs vs single spec
-    -- Heuristic: if result[1] is a table, it's an array of specs
+    local is_array = false
     if type(result[1]) == "table" then
+      is_array = true
+    elseif result[2] ~= nil then
+      is_array = true
+    elseif result[1] ~= nil then
+      -- Single element. Check if it has any non-integer keys
+      local has_named_keys = false
+      for k, _ in pairs(result) do
+        if type(k) == "string" then
+          has_named_keys = true
+          break
+        end
+      end
+      if not has_named_keys then
+        is_array = true
+      end
+    end
+
+    if is_array then
       for _, s in ipairs(result) do
         table.insert(specs, s)
       end

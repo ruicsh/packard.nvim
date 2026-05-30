@@ -43,6 +43,25 @@ describe("Spec Loader", function()
     cleanup()
   end)
 
+  it("should load array of strings as multiple specs", function()
+    local files = {
+      ["libs.lua"] = [[return { "nvim-lua/plenary.nvim", "nvim-tree/nvim-web-devicons" }]],
+    }
+    local dir, cleanup = helpers.with_temp_dir(files)
+
+    packard.setup({
+      self_management = false,
+      plugins_dir = dir,
+    })
+
+    expect(#packard.plugins).to_be(2)
+    local names = { packard.plugins[1].owner_repo, packard.plugins[2].owner_repo }
+    expect(names).to_contain("nvim-lua/plenary.nvim")
+    expect(names).to_contain("nvim-tree/nvim-web-devicons")
+
+    cleanup()
+  end)
+
   it("should skip files prefixed with underscore", function()
     local files = {
       ["active.lua"] = [[return { "a/b" }]],

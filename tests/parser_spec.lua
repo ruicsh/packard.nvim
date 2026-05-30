@@ -153,6 +153,23 @@ local function test_dependencies()
   assert(packard.plugins[1].lazy == false) -- Auto-injected deps are eager
   assert(packard.plugins[3].lazy == true) -- Default is lazy
 
+  -- 1a. Dependency should be eager even if declared as top-level lazy plugin
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { "owner/repo", dependencies = { "dep/a" } },
+      { "dep/a", lazy = true },
+    },
+  })
+  local lib
+  for _, p in ipairs(packard.plugins) do
+    if p.owner_repo == "dep/a" then
+      lib = p
+      break
+    end
+  end
+  assert(lib.lazy == false)
+
   -- 2. No duplicates if dep is already declared
   packard.setup({
     self_management = false,

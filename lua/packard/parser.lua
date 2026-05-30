@@ -165,11 +165,22 @@ function Parser.parse_all(plugins, defaults)
           -- Merge dependency spec fields into already-registered plugin
           -- (e.g., branch from dependency spec should apply to top-level plugin)
           local dep_spec = dep_info.spec
+          local existing = seen[dep_owner_repo]
+
+          -- If it's used as a dependency, it should be eager to ensure availability,
+          -- unless the dependency spec explicitly overrides it to lazy.
           if type(dep_spec) == "table" then
-            local existing = seen[dep_owner_repo]
+            if dep_spec.lazy ~= nil then
+              existing.lazy = dep_spec.lazy
+            else
+              existing.lazy = false
+            end
+
             if dep_spec.branch ~= nil and existing.branch == nil then
               existing.branch = dep_spec.branch
             end
+          else
+            existing.lazy = false
           end
         end
         -- Link reverse dependency
