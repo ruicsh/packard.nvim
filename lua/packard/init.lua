@@ -161,14 +161,47 @@ function M._setup_lazy_load()
     if plugin.event then
       has_triggers = true
       local events = type(plugin.event) == "table" and plugin.event or { plugin.event }
-      vim.api.nvim_create_autocmd(events, {
-        group = vim.api.nvim_create_augroup("packard_load_" .. plugin.name, { clear = true }),
-        once = true,
-        callback = function()
-          M._load_and_config(plugin)
-        end,
-        desc = string.format("packard: load %s", plugin.name),
-      })
+
+      -- Filter out pseudo-events like 'VeryLazy' which are not native Neovim events
+      local has_deferred = false
+      local real_events = {}
+      --[[@diagnostic disable-next-line: param-type-mismatch]]
+      for _, e in ipairs(events) do
+        if e == "VeryLazy" or e == "LazyFile" then
+          has_deferred = true
+        else
+          table.insert(real_events, e)
+        end
+      end
+
+      if #real_events > 0 or has_deferred then
+        local group = vim.api.nvim_create_augroup("packard_load_" .. plugin.name, { clear = true })
+
+        if #real_events > 0 then
+          --[[@diagnostic disable-next-line: param-type-mismatch]]
+          vim.api.nvim_create_autocmd(real_events, {
+            group = group,
+            once = true,
+            callback = function()
+              M._load_and_config(plugin)
+            end,
+            desc = string.format("packard: load %s", plugin.name),
+          })
+        end
+
+        if has_deferred then
+          vim.api.nvim_create_autocmd("UIEnter", {
+            group = group,
+            once = true,
+            callback = function()
+              vim.schedule(function()
+                M._load_and_config(plugin)
+              end)
+            end,
+            desc = string.format("packard: load %s (deferred)", plugin.name),
+          })
+        end
+      end
     end
 
     -- 4. Filetypes

@@ -69,7 +69,7 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 |---|---|---|
 | `keys` | `string\|string[]\|table` | Load on keymap(s). Supports simple strings or full mapping tables. |
 | `cmd` | `string\|string[]` | Load on command(s). |
-| `event` | `string\|string[]` | Load on autocmd event(s). |
+| `event` | `string\|string[]` | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`. |
 | `ft` | `string\|string[]` | Load on filetype(s). |
 | `lazy` | `boolean` | If `false`, load immediately on startup (default: `true`). |
 | `config` | `function` | Function called after plugin loads: `function(plugin, opts)`. |
