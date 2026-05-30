@@ -668,6 +668,7 @@ function UI.render_installed(lines)
     anomalies = {},
   }
 
+  local max_name_len = 30
   for _, plugin in ipairs(UI.plugins) do
     local path = require("packard.utils").get_plugin_path(plugin.name)
     if vim.fn.isdirectory(path) == 0 then
@@ -675,6 +676,12 @@ function UI.render_installed(lines)
     else
       table.insert(grouped.installed, plugin)
     end
+
+    local name_display = plugin.owner_repo
+    if plugin.is_dependency then
+      name_display = name_display .. " [dep]"
+    end
+    max_name_len = math.max(max_name_len, vim.fn.strdisplaywidth(name_display))
   end
 
   local function render_section(title, plugins, icon)
@@ -682,6 +689,7 @@ function UI.render_installed(lines)
       return
     end
     table.insert(lines, string.format("  %s (%d)", title, #plugins))
+    local fmt = string.format("    %%s %%-%ds  %%-10s  %%-15s  %%-10s", max_name_len)
     for _, plugin in ipairs(plugins) do
       local commit = Lockfile.get_installed_commit(plugin.name) or "unknown"
       local branch_display = plugin.branch or "(default)"
@@ -701,7 +709,7 @@ function UI.render_installed(lines)
 
       table.insert(
         lines,
-        string.format("    %s %-30s %-10s %-15s %-10s", icon, name_display, commit:sub(1, 7), branch_display, cooldown)
+        string.format(fmt, icon, name_display, commit:sub(1, 7), branch_display, cooldown)
       )
       UI.line_map[#lines] = plugin.owner_repo
 
@@ -756,6 +764,21 @@ function UI.render_pending(lines)
     end
   end
 
+  local max_name_len = 26
+  local all_pending = vim.tbl_extend("force", status.eligible, status.cooldown)
+  for owner_repo, _ in pairs(all_pending) do
+    local name_display = owner_repo
+    for _, p in ipairs(UI.plugins) do
+      if p.owner_repo == owner_repo then
+        if p.is_dependency then
+          name_display = name_display .. " [dep]"
+        end
+        break
+      end
+    end
+    max_name_len = math.max(max_name_len, vim.fn.strdisplaywidth(name_display))
+  end
+
   local function render_section(title, items, icon)
     local keys = vim.tbl_keys(items)
     if #keys == 0 then
@@ -764,6 +787,7 @@ function UI.render_pending(lines)
     table.sort(keys)
 
     table.insert(lines, string.format("  %s (%d)", title, #keys))
+    local fmt = string.format("    %%s %%-%ds  %%-10s  %%-8s  %%-22s  %%-10s", max_name_len)
     for _, owner_repo in ipairs(keys) do
       local entry = items[owner_repo]
       local plugin_name = owner_repo:match("/([^/]+)$")
@@ -791,7 +815,7 @@ function UI.render_pending(lines)
       table.insert(
         lines,
         string.format(
-          "    %s %-26s %-10s %-8s %-22s %-10s",
+          fmt,
           icon,
           name_display,
           target_display,
@@ -935,22 +959,11 @@ function UI.render_summary(lines)
     return
   end
 
-  table.insert(lines, string.format("  %-30s %-10s %-10s %-15s %-15s", "Plugin", "From", "To", "Date", "Age"))
-  table.insert(
-    lines,
-    string.format(
-      "  %-30s %-10s %-10s %-15s %-15s",
-      string.rep("─", 30),
-      string.rep("─", 10),
-      string.rep("─", 10),
-      string.rep("─", 15),
-      string.rep("─", 15)
-    )
-  )
-
+  local max_name_len = 30
   -- Group by plugin, but let's just list them sorted by timestamp
   local all_updates = {}
   for owner_repo, updates in pairs(s.update_log) do
+    max_name_len = math.max(max_name_len, vim.fn.strdisplaywidth(owner_repo))
     for _, update in ipairs(updates) do
       table.insert(all_updates, {
         owner_repo = owner_repo,
@@ -961,6 +974,20 @@ function UI.render_summary(lines)
     end
   end
 
+  local fmt = string.format("  %%-%ds  %%-10s  %%-10s  %%-15s  %%-15s", max_name_len)
+  table.insert(lines, string.format(fmt, "Plugin", "From", "To", "Date", "Age"))
+  table.insert(
+    lines,
+    string.format(
+      fmt,
+      string.rep("─", max_name_len),
+      string.rep("─", 10),
+      string.rep("─", 10),
+      string.rep("─", 15),
+      string.rep("─", 15)
+    )
+  )
+
   table.sort(all_updates, function(a, b)
     return a.timestamp > b.timestamp
   end)
@@ -970,7 +997,7 @@ function UI.render_summary(lines)
     local age = UI._format_age(u.timestamp)
     table.insert(
       lines,
-      string.format("  %-30s %-10s %-10s %-15s %-15s", u.owner_repo, u.from:sub(1, 7), u.to:sub(1, 7), date, age)
+      string.format(fmt, u.owner_repo, u.from:sub(1, 7), u.to:sub(1, 7), date, age)
     )
   end
 end
