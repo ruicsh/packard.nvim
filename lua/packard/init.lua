@@ -228,28 +228,6 @@ function M.setup(opts)
     error("packard.setup: 'defaults' must be a table")
   end
 
-  local highlight_defaults = {
-    PackardHeader = { link = "Normal" },
-    PackardH2 = { link = "Bold" },
-    PackardComment = { link = "Comment" },
-    PackardCommit = { link = "Normal" },
-    PackardCommitHash = { link = "Identifier" },
-    PackardStatusOk = { link = "DiagnosticOk" },
-    PackardStatusWarn = { link = "DiagnosticWarn" },
-    PackardStatusError = { link = "DiagnosticError" },
-    PackardEligible = { link = "Normal" },
-    PackardCooldown = { link = "Normal" },
-    PackardKeyHint = { link = "@punctuation.special" },
-    PackardDivider = { link = "Normal" },
-    PackardProgressDone = { link = "Normal" },
-    PackardProgressTodo = { link = "Normal" },
-    PackardAIRiskLow = { link = "DiagnosticInfo" },
-    PackardAIRiskMedium = { link = "DiagnosticWarn" },
-    PackardAIRiskHigh = { link = "DiagnosticError" },
-    PackardAIBorder = { link = "Normal" },
-  }
-  local highlights = vim.tbl_deep_extend("force", highlight_defaults, opts.highlights or {})
-
   if defaults.minimum_release_age ~= nil then
     if type(defaults.minimum_release_age) ~= "number" or defaults.minimum_release_age < 0 then
       error("packard.setup: 'defaults.minimum_release_age' must be a non-negative number")
