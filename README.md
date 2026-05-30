@@ -29,8 +29,9 @@ Add this to your `init.lua` before calling `setup`:
 -- Bootstrap packard.nvim
 local packpath = vim.fn.stdpath("data") .. "/site/pack/packard/start/packard.nvim"
 if vim.fn.isdirectory(packpath) == 0 then
-  vim.fn.system({ "git", "clone", "--filter=blob:none", "https://github.com/RuiCostaPT/packard.nvim.git", packpath })
+  vim.fn.system({ "git", "clone", "--filter=blob:none", "https://github.com/ruicsh/packard.nvim.git", packpath })
 end
+vim.opt.rtp:prepend(packpath)
 
 require("packard").setup({
   defaults = {
