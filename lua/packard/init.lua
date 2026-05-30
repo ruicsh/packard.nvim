@@ -49,7 +49,7 @@ function M._bootstrap()
       local tag_timeout = (M.config and M.config.defaults and M.config.defaults.tag_timeout) or 5000
       local tags = Git.list_tags(plugin.url, tag_timeout)
       local range = Semver.to_range(plugin.version)
-      local best = Semver.pick_best(tags, range)
+      local best = range and Semver.pick_best(tags, range) or nil
       if best then
         pack_spec.version = best.tag
       elseif plugin.branch then

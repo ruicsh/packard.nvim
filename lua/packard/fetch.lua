@@ -139,7 +139,7 @@ function Fetch.check_all(plugins, on_progress)
           local tags = Git.parse_ls_remote_tags(tag_obj.stdout)
           local Semver = require("packard.semver")
           local range = Semver.to_range(plugin.version)
-          local best = Semver.pick_best(tags, range)
+          local best = range and Semver.pick_best(tags, range) or nil
           if best then
             result.success = true
             result.new_tag = best.tag
