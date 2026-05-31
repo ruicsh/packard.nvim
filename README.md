@@ -67,7 +67,7 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 
 | Field | Type | Description |
 |---|---|---|
-| `keys` | `string\|string[]\|table` | Load on keymap(s). Supports simple strings or full mapping tables. |
+| `keys` | `string\|string[]\|table\|function` | Load on keymap(s). Supports simple strings, full mapping tables, or a function that returns key specs. |
 | `cmd` | `string\|string[]` | Load on command(s). |
 | `event` | `string\|string[]` | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`. |
 | `ft` | `string\|string[]` | Load on filetype(s). |
@@ -91,6 +91,23 @@ Example:
   end
 }
 ```
+
+`keys` can also be a function that returns key specs:
+
+```lua
+{
+  "folke/snacks.nvim",
+  keys = function()
+    return {
+      { "<leader><space>", function() Snacks.picker.smart() end, desc = "Smart Picker" },
+      { "<leader>,",      function() Snacks.picker.buffers() end, desc = "Buffers" },
+    }
+  end,
+}
+```
+
+When multiple specs for the same plugin are declared, trigger fields
+(`keys`, `cmd`, `event`, `ft`) are merged from all specs.
 
 ## Version Support
 

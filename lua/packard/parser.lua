@@ -15,7 +15,7 @@ local Parser = {}
 ---@field opts table|nil
 ---@field event string|string[]|table|nil
 ---@field cmd string|string[]|table|nil
----@field keys string|string[]|table|nil
+---@field keys string|string[]|table|function|nil
 ---@field ft string|string[]|table|nil
 ---@field ai_review table|nil Per-plugin AI config override
 ---@field dependencies table[]|nil Array of { owner_repo: string, spec: any }

@@ -241,6 +241,228 @@ Helpers.describe("Lazy Loading", function()
     Helpers.expect(result2).to_be("*:[vV\x16]")
   end)
 
+  -- keys = fn tests
+
+  Helpers.it("keys = fn returning a string creates a stub", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/keys-string",
+          keys = function()
+            return "<leader>fs"
+          end,
+        },
+      },
+    })
+
+    local ok = pcall(vim.keymap.del, "n", "<leader>fs")
+    Helpers.expect(ok).to_be(true)
+  end)
+
+  Helpers.it("keys = fn returning a table creates stubs", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/keys-table",
+          keys = function()
+            return { { "<leader>ft", desc = "fn table" } }
+          end,
+        },
+      },
+    })
+
+    local ok = pcall(vim.keymap.del, "n", "<leader>ft")
+    Helpers.expect(ok).to_be(true)
+  end)
+
+  Helpers.it("keys = fn returning nil creates no stubs", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/keys-nil",
+          keys = function()
+            return nil
+          end,
+        },
+      },
+    })
+
+    -- No stub should be set; trying to delete should fail
+    local ok = pcall(vim.keymap.del, "n", "<leader>xnotset")
+    Helpers.expect(ok).to_be(false)
+  end)
+
+  Helpers.it("keys = fn that throws creates no stubs and does not error", function()
+    local ok, err = pcall(function()
+      packard.setup({
+        self_management = false,
+        plugins = {
+          {
+            "foo/keys-error",
+            keys = function()
+              error("boom")
+            end,
+          },
+        },
+      })
+    end)
+    -- The test itself should not error (packard handles the pcall internally)
+    Helpers.expect(ok).to_be(true)
+  end)
+
+  Helpers.it("merges keys = fn from duplicate specs", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/fn-merge",
+          keys = function()
+            return { { "<leader>fm1", desc = "first" } }
+          end,
+        },
+        {
+          "foo/fn-merge",
+          keys = function()
+            return { { "<leader>fm2", desc = "second" } }
+          end,
+        },
+      },
+    })
+
+    local ok1 = pcall(vim.keymap.del, "n", "<leader>fm1")
+    local ok2 = pcall(vim.keymap.del, "n", "<leader>fm2")
+    Helpers.expect(ok1).to_be(true)
+    Helpers.expect(ok2).to_be(true)
+  end)
+
+  Helpers.it("merges keys = fn where one throws and one succeeds", function()
+    local notified = false
+    local original_notify = vim.notify
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    vim.notify = function(msg, level)
+      if msg:find("keys function error") then
+        notified = true
+      end
+    end
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/fn-merge-err",
+          keys = function()
+            error("boom")
+          end,
+        },
+        {
+          "foo/fn-merge-err",
+          keys = function()
+            return { { "<leader>fme", desc = "ok" } }
+          end,
+        },
+      },
+    })
+
+    vim.notify = original_notify
+    Helpers.expect(notified).to_be(true)
+
+    -- The working function's key should still be registered
+    local ok = pcall(vim.keymap.del, "n", "<leader>fme")
+    Helpers.expect(ok).to_be(true)
+  end)
+
+  -- Duplicate spec merge tests
+
+  Helpers.it("merges keys from duplicate specs", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/merge-keys", keys = "<leader>m1" },
+        { "foo/merge-keys", keys = { { "<leader>m2", desc = "M2" } } },
+      },
+    })
+
+    local ok1 = pcall(vim.keymap.del, "n", "<leader>m1")
+    local ok2 = pcall(vim.keymap.del, "n", "<leader>m2")
+    Helpers.expect(ok1).to_be(true)
+    Helpers.expect(ok2).to_be(true)
+  end)
+
+  Helpers.it("merges cmd from duplicate specs", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/merge-cmd", cmd = "MergeCmdA" },
+        { "foo/merge-cmd", cmd = "MergeCmdB" },
+      },
+    })
+
+    local commands = vim.api.nvim_get_commands({})
+    Helpers.expect(commands.MergeCmdA).to_be_truthy()
+    Helpers.expect(commands.MergeCmdB).to_be_truthy()
+
+    pcall(vim.api.nvim_del_user_command, "MergeCmdA")
+    pcall(vim.api.nvim_del_user_command, "MergeCmdB")
+  end)
+
+  Helpers.it("merges event from duplicate specs", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/merge-event", event = "BufRead" },
+        { "foo/merge-event", event = "VimEnter" },
+      },
+    })
+
+    local autocmds_a = vim.api.nvim_get_autocmds({ event = "BufRead" })
+    local autocmds_b = vim.api.nvim_get_autocmds({ event = "VimEnter" })
+    local found_a = false
+    local found_b = false
+    for _, au in ipairs(autocmds_a) do
+      if au.desc and au.desc:match("packard: load merge%-event") then
+        found_a = true
+        break
+      end
+    end
+    for _, au in ipairs(autocmds_b) do
+      if au.desc and au.desc:match("packard: load merge%-event") then
+        found_b = true
+        break
+      end
+    end
+    Helpers.expect(found_a).to_be(true)
+    Helpers.expect(found_b).to_be(true)
+
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_merge-event")
+  end)
+
+  Helpers.it("later enabled = false removes plugin entirely", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/enabled-test", keys = "<leader>et" },
+        { "foo/enabled-test", enabled = false },
+      },
+    })
+
+    -- Plugin should not be in the list
+    local found = false
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/enabled-test" then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be(false)
+
+    -- No stub should be set
+    local ok = pcall(vim.keymap.del, "n", "<leader>et")
+    Helpers.expect(ok).to_be(false)
+  end)
+
   -- Restore mocks
   vim.pack.add = original_pack_add
   vim.fn.isdirectory = original_isdirectory

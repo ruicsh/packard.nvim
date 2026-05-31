@@ -26,6 +26,59 @@ M._is_checking = false
 M._is_offline = false
 
 ---@private
+---Merge trigger fields from new_spec into existing_spec (raw spec tables).
+---@param existing table Plugin spec already in final_specs
+---@param new_spec table Duplicate plugin spec to merge triggers from
+function M._merge_spec_triggers(existing, new_spec)
+  local trigger_fields = { "keys", "cmd", "event", "ft" }
+  for _, field in ipairs(trigger_fields) do
+    local a = existing[field]
+    local b = new_spec[field]
+    if a and b then
+      local merged = {}
+      local seen = {}
+      local function add(val)
+        if val == nil then
+          return
+        end
+        if type(val) == "string" then
+          if not seen[val] then
+            seen[val] = true
+            table.insert(merged, val)
+          end
+        elseif type(val) == "table" then
+          local key = vim.inspect(val)
+          if not seen[key] then
+            seen[key] = true
+            table.insert(merged, val)
+          end
+        elseif type(val) == "function" then
+          table.insert(merged, val)
+        end
+      end
+      local function flatten(v)
+        if type(v) == "table" then
+          if v[1] ~= nil then
+            for _, item in ipairs(v) do
+              add(item)
+            end
+          elseif next(v) then
+            add(v)
+          end
+        else
+          add(v)
+        end
+      end
+      flatten(a)
+      flatten(b)
+      existing[field] = merged
+    elseif b then
+      existing[field] = b
+    end
+  end
+end
+
+---@private
 function M._load_and_config(plugin)
   if package.loaded["packard.plugins." .. plugin.name] then
     return
@@ -57,66 +110,107 @@ function M._setup_lazy_load()
 
     -- 1. Keys
     if plugin.keys then
-      has_triggers = true
-      local keys = type(plugin.keys) == "table" and plugin.keys or { plugin.keys }
-      for i = 1, #keys do
-        local key = keys[i]
-        local lhs, rhs, mode
-        if type(key) == "string" then
-          lhs = key
-          mode = "n"
-        elseif type(key) == "table" then
-          -- lazy.nvim key format: { [mode?], lhs, [rhs], ... }
-          -- Detect if first element is a mode string (valid mode chars only)
-          local first = key[1]
-          if type(first) == "string" and first:match("^[nivxsotc]+$") then
-            mode = first
-            lhs = key[2]
-            rhs = key[3]
+      -- Resolve function: call it (pcall) and use its return value
+      local resolved = plugin.keys
+      if type(resolved) == "function" then
+        local ok, result = pcall(resolved)
+        if ok then
+          resolved = result
+        else
+          resolved = nil
+          vim.notify(
+            string.format("packard: keys function error for '%s': %s", plugin.name, result),
+            vim.log.levels.WARN
+          )
+        end
+      end
+      if resolved then
+        has_triggers = true
+        local keys = type(resolved) == "table" and resolved or { resolved }
+        -- Flatten: resolve any inner functions returned from merged specs
+        local flat = {}
+        for _, k in ipairs(keys) do
+          if type(k) == "function" then
+            local ok, result = pcall(k)
+            if ok and result then
+              if type(result) == "table" then
+                for _, item in ipairs(result) do
+                  table.insert(flat, item)
+                end
+              else
+                table.insert(flat, result)
+              end
+            elseif not ok then
+              vim.notify(
+                string.format("packard: keys function error for '%s': %s", plugin.name, tostring(result)),
+                vim.log.levels.WARN
+              )
+            end
           else
-            mode = key.mode or "n"
-            lhs = key[1]
-            rhs = key[2]
+            table.insert(flat, k)
           end
         end
+        keys = flat
 
-        if lhs then
-          -- Build opts for the real mapping (after trigger fires)
-          -- Include all non-positional, non-consumed keys from the key spec
-          local real_map_opts = {}
-          if type(key) == "table" then
-            for k, v in pairs(key) do
-              if type(k) ~= "number" and k ~= "mode" then
-                real_map_opts[k] = v
-              end
+        for i = 1, #keys do
+          local key = keys[i]
+          local lhs, rhs, mode
+          if type(key) == "string" then
+            lhs = key
+            mode = "n"
+          elseif type(key) == "table" then
+            -- lazy.nvim key format: { [mode?], lhs, [rhs], ... }
+            -- Detect if first element is a mode string (valid mode chars only)
+            local first = key[1]
+            if type(first) == "string" and first:match("^[nivxsotc]+$") then
+              mode = first
+              lhs = key[2]
+              rhs = key[3]
+            else
+              mode = key.mode or "n"
+              lhs = key[1]
+              rhs = key[2]
             end
           end
-          real_map_opts.desc = real_map_opts.desc or string.format("packard: load %s", plugin.name)
 
-          -- Capture locals for the closure
-          local capture_lhs = lhs
-          local capture_mode = mode
-          local capture_rhs = rhs
-          local capture_opts = real_map_opts
-
-          vim.keymap.set(capture_mode, capture_lhs, function()
-            -- Delete the stub
-            pcall(vim.keymap.del, capture_mode, capture_lhs)
-            -- Load the plugin
-            M._load_and_config(plugin)
-            -- If user provided a RHS, set the real mapping and trigger it
-            if capture_rhs then
-              vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
-              -- Replay the keys
-              local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
-              vim.api.nvim_feedkeys(feed, "m", false)
-            else
-              -- Load-only trigger, just replay the original keys
-              -- which might now be mapped by the plugin itself
-              local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
-              vim.api.nvim_feedkeys(feed, "m", false)
+          if lhs then
+            -- Build opts for the real mapping (after trigger fires)
+            -- Include all non-positional, non-consumed keys from the key spec
+            local real_map_opts = {}
+            if type(key) == "table" then
+              for k, v in pairs(key) do
+                if type(k) ~= "number" and k ~= "mode" then
+                  real_map_opts[k] = v
+                end
+              end
             end
-          end, { desc = string.format("packard: load %s", plugin.name) })
+            real_map_opts.desc = real_map_opts.desc or string.format("packard: load %s", plugin.name)
+
+            -- Capture locals for the closure
+            local capture_lhs = lhs
+            local capture_mode = mode
+            local capture_rhs = rhs
+            local capture_opts = real_map_opts
+
+            vim.keymap.set(capture_mode, capture_lhs, function()
+              -- Delete the stub
+              pcall(vim.keymap.del, capture_mode, capture_lhs)
+              -- Load the plugin
+              M._load_and_config(plugin)
+              -- If user provided a RHS, set the real mapping and trigger it
+              if capture_rhs then
+                vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
+                -- Replay the keys
+                local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
+                vim.api.nvim_feedkeys(feed, "m", false)
+              else
+                -- Load-only trigger, just replay the original keys
+                -- which might now be mapped by the plugin itself
+                local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
+                vim.api.nvim_feedkeys(feed, "m", false)
+              end
+            end, { desc = string.format("packard: load %s", plugin.name) })
+          end
         end
       end
     end
@@ -515,21 +609,60 @@ function M.setup(opts)
   }
 
   -- T-1.3.2: Include packard itself if not disabled
-  -- Filter enabled = false and handle duplicates (last wins)
+  -- Merge trigger fields (keys, cmd, event, ft) from duplicate specs.
+  -- Non-trigger fields: last occurrence wins (so inline wins over file specs).
   local final_specs = {}
   local seen = {}
 
-  for i = #plugins, 1, -1 do
+  for i = 1, #plugins do
     local p = plugins[i]
     if type(p) == "string" then
       p = { p }
     end
     local source = p[1]
-    if source and not seen[source] then
-      if p.enabled ~= false then
-        table.insert(final_specs, 1, p)
+    if source then
+      if p.enabled == false then
+        -- Drop disabled spec; also remove existing entry if present
+        if seen[source] then
+          -- Remove from final_specs
+          local idx
+          for j = 1, #final_specs do
+            if final_specs[j][1] == source then
+              idx = j
+              break
+            end
+          end
+          if idx then
+            table.remove(final_specs, idx)
+          end
+          seen[source] = nil
+        end
+      elseif not seen[source] then
+        table.insert(final_specs, p)
+        seen[source] = p
+      else
+        -- Duplicate found: merge trigger fields, override non-trigger fields with later spec
+        local existing = seen[source]
+        M._merge_spec_triggers(existing, p)
+        -- Non-trigger fields: later spec wins (so inline wins over file specs)
+        local non_trigger = {
+          "branch",
+          "version",
+          "tag",
+          "commit",
+          "minimum_release_age",
+          "lazy",
+          "priority",
+          "config",
+          "opts",
+          "ai_review",
+        }
+        for _, field in ipairs(non_trigger) do
+          if p[field] ~= nil then
+            existing[field] = p[field]
+          end
+        end
       end
-      seen[source] = true
     end
   end
 
