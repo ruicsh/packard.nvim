@@ -72,9 +72,9 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 | `event` | `string\|string[]` | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`. |
 | `ft` | `string\|string[]` | Load on filetype(s). |
 | `lazy` | `boolean` | If `false`, load immediately on startup (default: `true`). |
-| `config` | `function` | Function called after plugin loads: `function(plugin, opts)`. Optional — if omitted but `opts` is present, Packard auto-calls `require("plugin").setup(opts)`. |
+| `config` | `function\|boolean` | Function called after plugin loads: `function(plugin, opts)`. Set to `true` to auto-call `require("plugin").setup(opts or {})` — useful for zero-config plugins. If omitted but `opts` is present, Packard auto-calls `require("plugin").setup(opts)`. |
 | `init` | `function` | Function called at **startup** before the plugin loads: `function(plugin)`. Useful for setting `vim.g.*` values that VimScript plugins check at startup. Runs for all plugins regardless of `lazy` setting. |
-| `opts` | `table` | Options passed to the `config` function. If `config` is absent, auto-invokes `require("plugin").setup(opts)`. |
+| `opts` | `table` | Options passed to the `config` function. If `config` is absent but `opts` is present, auto-invokes `require("plugin").setup(opts)`. |
 
 Example:
 ```lua
@@ -105,6 +105,28 @@ If you need custom setup logic, provide an explicit `config`:
   end
 }
 ```
+
+For zero-config plugins that just need `require("plugin").setup({})` called, use `config = true`:
+
+```lua
+{
+  "folke/todo-comments.nvim",
+  config = true,
+}
+```
+
+This is equivalent to:
+
+```lua
+{
+  "folke/todo-comments.nvim",
+  config = function()
+    require("todo-comments").setup({})
+  end,
+}
+```
+
+`config = true` always calls `setup()`, even without `opts`. If you also provide `opts`, they are passed to `setup(opts)`.
 
 `init` runs at startup before the plugin loads — useful for early `vim.g.*` setup:
 

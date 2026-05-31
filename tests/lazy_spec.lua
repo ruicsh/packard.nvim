@@ -1358,6 +1358,120 @@ Helpers.describe("Lazy Loading", function()
     package.loaded["priority-test-mod"] = nil
   end)
 
+  -- config = true tests
+
+  Helpers.it("config=true with no opts calls setup({})", function()
+    local setup_opts = nil
+    package.loaded["config-true-nil-mod"] = {
+      setup = function(opts)
+        setup_opts = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/config-true-nil-mod", config = true },
+      },
+    })
+
+    Helpers.expect(setup_opts).to_be_truthy()
+    Helpers.expect(type(setup_opts)).to_be("table")
+    -- opts should be empty table, not nil
+    Helpers.expect(next(setup_opts)).to_be(nil)
+
+    package.loaded["config-true-nil-mod"] = nil
+  end)
+
+  Helpers.it("config=true with opts table calls setup(opts)", function()
+    local setup_opts = nil
+    package.loaded["config-true-opts-mod"] = {
+      setup = function(opts)
+        setup_opts = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/config-true-opts-mod",
+          config = true,
+          opts = { enabled = true, value = 42 },
+        },
+      },
+    })
+
+    Helpers.expect(setup_opts).to_be_truthy()
+    Helpers.expect(setup_opts.enabled).to_be(true)
+    Helpers.expect(setup_opts.value).to_be(42)
+
+    package.loaded["config-true-opts-mod"] = nil
+  end)
+
+  Helpers.it("config=true with opts function resolves and calls setup()", function()
+    local setup_opts = nil
+    package.loaded["config-true-fn-opts-mod"] = {
+      setup = function(opts)
+        setup_opts = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/config-true-fn-opts-mod",
+          config = true,
+          opts = function()
+            return { val = "computed" }
+          end,
+        },
+      },
+    })
+
+    Helpers.expect(setup_opts).to_be_truthy()
+    Helpers.expect(setup_opts.val).to_be("computed")
+
+    package.loaded["config-true-fn-opts-mod"] = nil
+  end)
+
+  Helpers.it("config=true does not error when module has no setup()", function()
+    -- Module exists but has no setup() — should silently skip, not crash.
+    package.loaded["config-true-no-setup-mod"] = {}
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "bar/config-true-no-setup-mod", config = true },
+      },
+    })
+
+    package.loaded["config-true-no-setup-mod"] = nil
+  end)
+
+  Helpers.it("config=true strips .nvim suffix when resolving module", function()
+    local setup_called_with = nil
+    package.loaded["config-true-stripped"] = {
+      setup = function(opts)
+        setup_called_with = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "folke/config-true-stripped.nvim", config = true },
+      },
+    })
+
+    Helpers.expect(setup_called_with).to_be_truthy()
+    Helpers.expect(type(setup_called_with)).to_be("table")
+    Helpers.expect(next(setup_called_with)).to_be(nil)
+
+    package.loaded["config-true-stripped"] = nil
+  end)
+
   -- init() tests
 
   Helpers.it("calls init() during setup before plugin loads", function()

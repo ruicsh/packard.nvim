@@ -11,7 +11,7 @@ local Parser = {}
 ---@field minimum_release_age number
 ---@field lazy boolean
 ---@field priority number|nil
----@field config function|nil
+---@field config function|boolean|nil
 ---@field init function|nil
 ---@field opts table|nil
 ---@field event string|string[]|table|nil
@@ -130,9 +130,9 @@ function Parser.parse_all(plugins, defaults)
       end
     end
 
-    -- Validate config and init are functions if provided
-    if spec.config and type(spec.config) ~= "function" then
-      error(string.format("packard: 'config' for '%s' must be a function", owner_repo))
+    -- Validate config and init — config accepts function or true (auto-setup shortcut)
+    if spec.config ~= nil and type(spec.config) ~= "function" and spec.config ~= true then
+      error(string.format("packard: 'config' for '%s' must be a function or true", owner_repo))
     end
     if spec.init and type(spec.init) ~= "function" then
       error(string.format("packard: 'init' for '%s' must be a function", owner_repo))

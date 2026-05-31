@@ -110,6 +110,19 @@ local function test_lazy_load_fields()
   assert(p.opts.x == 1)
 end
 
+local function test_config_true()
+  print("Testing config = true...")
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { "plugin/f", config = true },
+    },
+  })
+
+  local p = packard.plugins[1]
+  assert(p.config == true, "config should be stored as true")
+end
+
 local function test_errors()
   print("Testing error cases...")
 
@@ -133,10 +146,15 @@ local function test_errors()
     packard.setup({ self_management = false, plugins = { { "a/b", minimum_release_age = -5 } } })
   end, "must be a number")
 
-  -- Invalid config type
+  -- Invalid config type (string)
   assert_error(function()
     packard.setup({ self_management = false, plugins = { { "a/b", config = "not a function" } } })
-  end, "must be a function")
+  end, "must be a function or true")
+
+  -- Invalid config type (false)
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { "a/b", config = false } } })
+  end, "must be a function or true")
 
   -- Invalid init type
   assert_error(function()
@@ -348,6 +366,7 @@ end
 test_normalization()
 test_defaults_and_overrides()
 test_lazy_load_fields()
+test_config_true()
 test_errors()
 test_dependencies()
 test_complex_dependencies()

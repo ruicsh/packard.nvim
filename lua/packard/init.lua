@@ -138,20 +138,21 @@ function M._load_and_config(plugin)
     end
   end
 
-  -- Run config function if defined
-  if plugin.config then
-    if type(plugin.config) == "function" then
-      plugin.config(plugin, opts or {})
-    end
-  elseif opts ~= nil then
-    -- Auto-config: lazy.nvim convention — opts implies require("plugin").setup(opts)
+  -- Run config function if defined, or auto-setup
+  if type(plugin.config) == "function" then
+    -- Explicit config function — call with (plugin, opts)
+    plugin.config(plugin, opts or {})
+  elseif plugin.config == true or (plugin.config == nil and opts ~= nil) then
+    -- Auto-config: lazy.nvim convention
+    --   config = true → always calls require(MAIN).setup(opts or {})
+    --   opts present + no config → calls require(MAIN).setup(opts or {})
     local modname = plugin.name:gsub("%.nvim$", "")
     local ok, mod = pcall(require, modname)
     if not ok and modname ~= plugin.name then
       ok, mod = pcall(require, plugin.name)
     end
     if ok and type(mod) == "table" and type(mod.setup) == "function" then
-      mod.setup(opts)
+      mod.setup(opts or {})
     end
   end
 end
