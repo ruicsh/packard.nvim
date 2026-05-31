@@ -174,6 +174,18 @@ Helpers.describe("UI Dashboard", function()
     end
     Helpers.expect(found_selected).to_be_truthy()
 
+    -- Also verify PackardRowSelected is present on the selected row
+    local found_row_selected = false
+    for _, em in ipairs(extmarks) do
+      local row = em[2]
+      local details = em[4]
+      if row == line_idx - 1 and details.hl_group == "PackardRowSelected" then
+        found_row_selected = true
+        break
+      end
+    end
+    Helpers.expect(found_row_selected).to_be_truthy()
+
     -- Move cursor away
     UI._cursor_repo = "baz/qux"
     UI.apply_highlights()
@@ -181,6 +193,7 @@ Helpers.describe("UI Dashboard", function()
     extmarks = vim.api.nvim_buf_get_extmarks(UI.buf, packard_ns, 0, -1, { details = true })
     found_selected = false
     local found_normal = false
+    found_row_selected = false
     for _, em in ipairs(extmarks) do
       local row = em[2]
       local details = em[4]
@@ -189,11 +202,15 @@ Helpers.describe("UI Dashboard", function()
           found_selected = true
         elseif details.hl_group == "PackardPluginName" then
           found_normal = true
+        elseif details.hl_group == "PackardRowSelected" then
+          found_row_selected = true
         end
       end
     end
     Helpers.expect(found_selected).to_be(false)
     Helpers.expect(found_normal).to_be_truthy()
+    -- Verify PackardRowSelected is removed when cursor moves away
+    Helpers.expect(found_row_selected).to_be(false)
 
     UI.close()
   end)

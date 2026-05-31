@@ -139,6 +139,7 @@ function UI.setup_highlights(user_highlights)
     PackardButtonActive = { link = "Visual" },
     PackardPluginName = { link = "Normal" },
     PackardPluginNameSelected = { link = "Visual" },
+    PackardRowSelected = { link = "Visual" },
     PackardCommit = { link = "Normal" },
     PackardCommitHash = { link = "Identifier" },
     PackardStatusOk = { link = "DiagnosticOk" },
@@ -613,6 +614,15 @@ function UI.apply_highlights(lines)
           local owner_repo = UI.line_map[i]
           local is_selected = (owner_repo and owner_repo == UI._cursor_repo)
           local hl_name = is_selected and "PackardPluginNameSelected" or "PackardPluginName"
+
+          -- Full-row selected background at low priority so individual element highlights override foreground
+          if is_selected then
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
+              end_col = #line,
+              hl_group = "PackardRowSelected",
+              priority = 50,
+            })
+          end
 
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, name_start, {
             end_col = name_end,
