@@ -460,10 +460,10 @@ function UI.apply_highlights(lines)
         })
       end
     elseif line:match("^    AI Review") or line:match("^    Commit Log") then
-      -- Expansion headers: bold
+      -- Expansion headers: dimmed
       vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 4, {
         end_col = #line,
-        hl_group = "PackardH1",
+        hl_group = "PackardComment",
       })
     elseif line:match("^    %s*%S") and not line:match("^    [●⚠⏳☒☐]") then
       -- Expansion content (non-plugin-row 4-space indent lines)
@@ -879,6 +879,8 @@ function UI._render_ai_expansion(lines, owner_repo)
     table.insert(lines, "    " .. content)
   end
 
+  add_line("")
+
   add_line("AI Review")
 
   if not result or result.state == "loading" then
@@ -907,6 +909,8 @@ function UI._render_ai_expansion(lines, owner_repo)
     add_line("")
     add_line("[R] Re-run")
   end
+
+  add_line("")
 end
 
 UI._log_cache = {} -- Map owner_repo -> log_lines
@@ -920,6 +924,7 @@ function UI._render_log_expansion(lines, owner_repo)
   local win_width = vim.api.nvim_win_get_width(UI.win)
   local width = win_width - 4
 
+  table.insert(lines, "    ")
   table.insert(lines, "    Commit Log")
 
   for _, l in ipairs(log_lines) do
@@ -929,6 +934,8 @@ function UI._render_log_expansion(lines, owner_repo)
     end
     table.insert(lines, "    " .. l)
   end
+
+  table.insert(lines, "    ")
 end
 
 function UI._wrap_text(text, max_len)
