@@ -286,6 +286,7 @@ function UI.close()
   UI.check_cooldown = 0
   UI.check_error_msg = nil
   UI._stop_spinner()
+  UI._log_cache = {}
 end
 
 -- T-4.1.5: Render
@@ -509,11 +510,23 @@ function UI.apply_highlights(lines)
             end_col = label_col + 7,
             hl_group = "PackardCommitHash",
           })
-          -- Message
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, label_col + 8, {
-            end_col = #line,
-            hl_group = "PackardAIValue",
+          -- Age column: 2 spaces after hash, then right-padded age (max 3 chars)
+          -- Extract the padded age portion (always max_age_width chars = 3)
+          local age_text = line:sub(label_col + 9, label_col + 11)
+          local age_display_width = vim.fn.strdisplaywidth(age_text)
+          local msg_start = label_col + 9 + age_display_width + 2
+          -- Clamp end_col to valid range; end_col=#line means end of line (exclusive)
+          local age_end = math.min(msg_start - 2, #line)
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, label_col + 9, {
+            end_col = age_end,
+            hl_group = "PackardCommitAge",
           })
+          if msg_start <= #line then
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, msg_start, {
+              end_col = #line,
+              hl_group = "PackardAIValue",
+            })
+          end
         -- 4. AI review in progress
         elseif line:match("AI review in progress") then
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, label_col, {
@@ -916,8 +929,12 @@ end
 UI._log_cache = {} -- Map owner_repo -> log_lines
 
 function UI._render_log_expansion(lines, owner_repo)
-  local log_lines = UI._log_cache[owner_repo]
-  if not log_lines then
+  local log_entries = UI._log_cache[owner_repo]
+  if not log_entries then
+    return
+  end
+
+  if not UI.win or not vim.api.nvim_win_is_valid(UI.win) then
     return
   end
 
@@ -927,12 +944,35 @@ function UI._render_log_expansion(lines, owner_repo)
   table.insert(lines, "    ")
   table.insert(lines, "    Commit Log")
 
-  for _, l in ipairs(log_lines) do
-    local display_width = vim.fn.strdisplaywidth(l)
-    if display_width > width then
-      l = vim.fn.strcharpart(l, 0, width - 3) .. "..."
+  -- Compute max age width for right-alignment in columnar display
+  local max_age_width = 0
+  for _, entry in ipairs(log_entries) do
+    if entry.age_width and entry.age_width > max_age_width then
+      max_age_width = entry.age_width
     end
-    table.insert(lines, "    " .. l)
+  end
+
+  for _, entry in ipairs(log_entries) do
+    if entry.hash and entry.age then
+      -- Columnar: hash | age (right-aligned) | message
+      local age_padded = string.rep(" ", max_age_width - entry.age_width) .. entry.age
+      local line_str = "    " .. entry.hash .. "  " .. age_padded .. "  " .. (entry.msg or "")
+      local display_width = vim.fn.strdisplaywidth(line_str)
+      if display_width > width then
+        local max_chars = math.max(0, width - 3)
+        line_str = vim.fn.strcharpart(line_str, 0, max_chars) .. "..."
+      end
+      table.insert(lines, line_str)
+    else
+      -- Fallback entry (e.g., "No new commits") — just the message
+      local msg = entry.msg or ""
+      local display_width = vim.fn.strdisplaywidth(msg)
+      if display_width > width then
+        local max_chars = math.max(0, width - 3)
+        msg = vim.fn.strcharpart(msg, 0, max_chars) .. "..."
+      end
+      table.insert(lines, "    " .. msg)
+    end
   end
 
   table.insert(lines, "    ")
@@ -1066,6 +1106,39 @@ function UI._format_age(timestamp)
     return "yesterday"
   end
   return days .. " days ago"
+end
+
+---Format a time difference in seconds as a short abbreviated string.
+---Single-unit precision, right for columnar display.
+---@param seconds number
+---@return string
+function UI._format_age_abbreviated(seconds)
+  if type(seconds) ~= "number" or seconds < 0 then
+    return "?"
+  end
+
+  local minutes = math.floor(seconds / 60)
+  local hours = math.floor(minutes / 60)
+  local days = math.floor(hours / 24)
+
+  if seconds < 60 then
+    return "now"
+  elseif minutes < 60 then
+    return minutes .. "m"
+  elseif hours < 24 then
+    return hours .. "h"
+  elseif days < 7 then
+    return days .. "d"
+  elseif days < 28 then
+    local weeks = math.floor(days / 7)
+    return weeks .. "w"
+  elseif days < 365 then
+    local months = math.max(1, math.floor(days / 30.44))
+    return months .. "M"
+  else
+    local years = math.floor(days / 365.25)
+    return years .. "y"
+  end
 end
 
 function UI.handle_approve()
@@ -1397,7 +1470,7 @@ function UI.handle_log()
   local cmd = {
     "git",
     "log",
-    "--pretty=format:%h %s (%cr)",
+    "--pretty=format:%h %ct %s",
     "--abbrev-commit",
     "--color=never",
     "--no-show-signature",
@@ -1429,16 +1502,35 @@ function UI.handle_log()
     return
   end
 
-  local log_lines = {}
+  local log_entries = {}
+  local now = os.time()
   for l in obj.stdout:gmatch("[^\r\n]+") do
-    table.insert(log_lines, l)
+    -- Format: hash unix_epoch_timestamp message
+    local hash, ts_str, msg = l:match("^(%S+) (%d+) (.+)$")
+    if hash and ts_str and msg then
+      local ts = tonumber(ts_str)
+      if ts then
+        local diff = now - ts
+        local age = UI._format_age_abbreviated(diff)
+        table.insert(log_entries, {
+          hash = hash,
+          age = age,
+          age_width = vim.fn.strdisplaywidth(age),
+          msg = msg,
+        })
+      else
+        table.insert(log_entries, { msg = l })
+      end
+    else
+      table.insert(log_entries, { msg = l })
+    end
   end
 
-  if #log_lines == 0 then
-    table.insert(log_lines, "No new commits")
+  if #log_entries == 0 then
+    table.insert(log_entries, { msg = "No new commits" })
   end
 
-  UI._log_cache[owner_repo] = log_lines
+  UI._log_cache[owner_repo] = log_entries
   UI.expanded_row = owner_repo
   UI.expanded_type = "log"
   UI._do_render()
