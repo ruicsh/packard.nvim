@@ -85,6 +85,20 @@ function M._load_and_config(plugin)
   end
   package.loaded["packard.plugins." .. plugin.name] = true
 
+  -- Force-load dependencies first (even if lazy), matching lazy.nvim behavior.
+  -- Without this, a deferred dependency (e.g. event="VeryLazy") would never run
+  -- its config before an eager dependent that references it.
+  if plugin.dependencies then
+    for _, dep in ipairs(plugin.dependencies) do
+      for _, p in ipairs(M.plugins) do
+        if p.owner_repo == dep.owner_repo then
+          M._load_and_config(p)
+          break
+        end
+      end
+    end
+  end
+
   -- Load the plugin code
   -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
   pcall(vim.cmd.packadd, plugin.name)

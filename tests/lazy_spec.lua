@@ -740,6 +740,178 @@ Helpers.describe("Lazy Loading", function()
     package.loaded["func-opts-config-mod"] = nil
   end)
 
+  Helpers.it("force-loads dependency before dependent on eager load", function()
+    local b_setup_called = false
+    local a_config_called = false
+    local b_setup_order = 0
+    local a_config_order = 0
+    local order_counter = 0
+
+    -- B: lazy plugin (has event trigger), loaded as dependency
+    package.loaded["dep-mod"] = {
+      setup = function()
+        b_setup_called = true
+        order_counter = order_counter + 1
+        b_setup_order = order_counter
+      end,
+    }
+    -- A: eager plugin depending on B
+    package.loaded["parent-mod"] = {}
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/dep-mod",
+          opts = {},
+          event = "VeryLazy",
+        },
+        {
+          "bar/parent-mod",
+          dependencies = { "foo/dep-mod" },
+          config = function(_, opts)
+            a_config_called = true
+            order_counter = order_counter + 1
+            a_config_order = order_counter
+          end,
+        },
+      },
+    })
+
+    -- B should have loaded before A
+    Helpers.expect(b_setup_called).to_be(true)
+    Helpers.expect(a_config_called).to_be(true)
+    Helpers.expect(b_setup_order < a_config_order).to_be(true)
+
+    package.loaded["dep-mod"] = nil
+    package.loaded["parent-mod"] = nil
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_dep-mod")
+  end)
+
+  Helpers.it("force-loads dependency when trigger fires", function()
+    local b_setup_called = false
+
+    package.loaded["dep-trigger-mod"] = {
+      setup = function()
+        b_setup_called = true
+      end,
+    }
+    package.loaded["trigger-parent-mod"] = {}
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/dep-trigger-mod",
+          opts = {},
+          event = "VeryLazy",
+        },
+        {
+          "bar/trigger-parent-mod",
+          dependencies = { "foo/dep-trigger-mod" },
+          keys = { { "<leader>tp", function() end, desc = "Trigger parent" } },
+          config = function(_, opts) end,
+        },
+      },
+    })
+
+    -- Fire the trigger (B may already be loaded via VeryLazy/UIEnter in headless)
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<leader>tp", true, false, true), "x", false)
+
+    -- B should be loaded (either via VeryLazy or force-loaded by A's trigger)
+    Helpers.expect(b_setup_called).to_be(true)
+
+    package.loaded["dep-trigger-mod"] = nil
+    package.loaded["trigger-parent-mod"] = nil
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_dep-trigger-mod")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_trigger-parent-mod")
+  end)
+
+  Helpers.it("resolves transitive dependencies", function()
+    local load_order = {}
+
+    package.loaded["transitive-c"] = {
+      setup = function()
+        table.insert(load_order, "C")
+      end,
+    }
+    package.loaded["transitive-b"] = {
+      setup = function()
+        table.insert(load_order, "B")
+      end,
+    }
+    package.loaded["transitive-a"] = {}
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/transitive-c",
+          opts = {},
+          event = "VeryLazy",
+        },
+        {
+          "bar/transitive-b",
+          dependencies = { "foo/transitive-c" },
+          opts = {},
+          event = "VeryLazy",
+        },
+        {
+          "baz/transitive-a",
+          dependencies = { "bar/transitive-b" },
+          config = function()
+            table.insert(load_order, "A")
+          end,
+        },
+      },
+    })
+
+    -- A is eager → loads B as dep → B loads C as dep
+    Helpers.expect(load_order[1]).to_be("C")
+    Helpers.expect(load_order[2]).to_be("B")
+    Helpers.expect(load_order[3]).to_be("A")
+
+    package.loaded["transitive-a"] = nil
+    package.loaded["transitive-b"] = nil
+    package.loaded["transitive-c"] = nil
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_transitive-b")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_transitive-c")
+  end)
+
+  Helpers.it("skips already-loaded dependency", function()
+    local b_setup_count = 0
+
+    package.loaded["eager-dep-mod"] = {
+      setup = function()
+        b_setup_count = b_setup_count + 1
+      end,
+    }
+    package.loaded["eager-parent-mod"] = {}
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/eager-dep-mod",
+          opts = {},
+          -- No triggers: loads eagerly in _setup_lazy_load
+        },
+        {
+          "bar/eager-parent-mod",
+          dependencies = { "foo/eager-dep-mod" },
+          config = function() end,
+          -- No triggers: loads eagerly in _setup_lazy_load
+        },
+      },
+    })
+
+    -- B should have loaded exactly once (topo order: B first, then A skips it)
+    Helpers.expect(b_setup_count).to_be(1)
+
+    package.loaded["eager-dep-mod"] = nil
+    package.loaded["eager-parent-mod"] = nil
+  end)
+
   Helpers.it("strips .nvim suffix when resolving module for auto-config", function()
     local setup_called_with = nil
     -- Plugin name will be "snacks.nvim" (from "folke/snacks.nvim"), auto-config should require "snacks"
