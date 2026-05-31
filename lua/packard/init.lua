@@ -7,6 +7,7 @@ local Lockfile = require("packard.lockfile")
 local State = require("packard.state")
 local UI = require("packard.ui")
 local Utils = require("packard.utils")
+local Build = require("packard.build")
 
 ---@class PackardConfig
 ---@field defaults table
@@ -447,6 +448,13 @@ function M._bootstrap()
     return pack_spec
   end
 
+  -- Snapshot which plugins are already on disk before installation.
+  -- This lets us run build steps only for newly installed plugins.
+  local pre_installed = {}
+  for _, plugin in ipairs(M.plugins) do
+    pre_installed[plugin.name] = vim.fn.isdirectory(Utils.get_plugin_path(plugin.name)) == 1
+  end
+
   -- Call Neovim's built-in pack manager
   -- Pass all specs in a single vim.pack.add() call so Neovim installs them
   -- in parallel with a unified progress indicator instead of one-by-one.
@@ -516,6 +524,24 @@ function M._bootstrap()
     end
   end
 
+  -- Run build steps for newly installed plugins.
+  -- Only run build if the plugin directory didn't exist before vim.pack.add()
+  -- (i.e., it was just freshly installed). This avoids re-running build on
+  -- every startup for already-installed plugins.
+  for _, plugin in ipairs(M.plugins) do
+    if not pre_installed[plugin.name] then
+      -- Plugin was just installed; check if it has a build step
+      if plugin.build ~= nil or Build._get_build_file(Utils.get_plugin_path(plugin.name)) then
+        Build.run(plugin)
+      end
+    end
+  end
+
+  -- Cache whether each plugin has a build step (avoids repeated filereadable calls in the UI).
+  for _, plugin in ipairs(M.plugins) do
+    plugin._has_build = plugin.build ~= nil or Build._get_build_file(Utils.get_plugin_path(plugin.name)) ~= nil
+  end
+
   -- Auto-resolve undeclared dependencies
   local Deps = require("packard.deps")
   local new_deps = Deps.verify_and_install(M.plugins)
@@ -575,6 +601,19 @@ function M._bootstrap()
               State.log_update(owner_repo, old_entry.ref, new_entry.ref)
               -- If it was in the queue, dequeue it
               State.dequeue(owner_repo)
+
+              -- Run build step for the updated plugin
+              for _, p in ipairs(M.plugins) do
+                if p.name == name then
+                  local plugin_path = Utils.get_plugin_path(p.name)
+                  if p.build ~= nil or Build._get_build_file(plugin_path) then
+                    Build.run(p)
+                    -- Refresh the cache so the UI indicator stays accurate.
+                    p._has_build = true
+                  end
+                  break
+                end
+              end
             end
           end
         end
@@ -602,22 +641,79 @@ function M._register_commands()
       UI.open(M.plugins, "summary", M._is_offline)
     elseif sub == "clean" then
       UI.open(M.plugins, "clean", M._is_offline)
+    elseif sub == "build" then
+      -- :Packard build <name> — rebuild a specific plugin
+      -- :Packard build — rebuild all plugins with build steps
+      local target = opts.fargs[2]
+      if target then
+        -- Find the plugin by name or owner_repo
+        local found
+        for _, p in ipairs(M.plugins) do
+          if p.name == target or p.owner_repo == target then
+            found = p
+            break
+          end
+        end
+        if found then
+          print(string.format("packard: building '%s'...", found.owner_repo))
+          local ok = Build.run(found, { force = true })
+          if ok then
+            print(string.format("packard: build succeeded for '%s'", found.owner_repo))
+          else
+            print(string.format("packard: build failed for '%s' (see errors above)", found.owner_repo))
+          end
+        else
+          print(string.format("packard: plugin '%s' not found", target))
+        end
+      else
+        -- Rebuild all plugins with build steps
+        local count = 0
+        local failures = 0
+        for _, p in ipairs(M.plugins) do
+          if p.build ~= nil or Build._get_build_file(Utils.get_plugin_path(p.name)) then
+            count = count + 1
+            if not Build.run(p, { force = true }) then
+              failures = failures + 1
+            end
+          end
+        end
+        if count == 0 then
+          print("packard: no plugins with build steps")
+        else
+          print(
+            string.format(
+              "packard: rebuilt %d plugin(s)%s",
+              count,
+              failures > 0 and string.format(" (%d failed)", failures) or ""
+            )
+          )
+        end
+      end
     elseif sub == "help" then
       UI.open(M.plugins, "help", M._is_offline)
     else
       print("packard: unknown subcommand '" .. sub .. "'")
     end
   end, {
-    nargs = "?",
+    nargs = "*",
     complete = function(_, line)
       local l = vim.split(line, "%s+")
       local n = #l
       if n == 2 then
-        local candidates = { "check", "review", "summary", "clean", "help" }
+        local candidates = { "check", "review", "summary", "clean", "build", "help" }
         local res = {}
         for _, c in ipairs(candidates) do
           if c:sub(1, #l[2]) == l[2] then
             table.insert(res, c)
+          end
+        end
+        return res
+      elseif n == 3 and l[2] == "build" then
+        -- Complete plugin names for :Packard build <name>
+        local res = {}
+        for _, p in ipairs(M.plugins) do
+          if p.name:sub(1, #l[3]) == l[3] or p.owner_repo:sub(1, #l[3]) == l[3] then
+            table.insert(res, p.name)
           end
         end
         return res
@@ -769,6 +865,7 @@ function M.setup(opts)
           "init",
           "ai_review",
           "cond",
+          "build",
         }
         for _, field in ipairs(non_trigger) do
           if p[field] ~= nil then

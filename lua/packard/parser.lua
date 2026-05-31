@@ -21,11 +21,13 @@ local Parser = {}
 ---@field ft string|string[]|table|nil
 ---@field ai_review table|nil Per-plugin AI config override
 ---@field cond boolean|function|nil Conditional loading (evaluated once at setup)
+---@field build function|string|string[]|false|nil Post-install/update build step
 ---@field dependencies table[]|nil Array of { owner_repo: string, spec: any }
 ---@field is_dependency boolean|nil True if auto-injected
 ---@field depended_by string[]|nil Plugins that depend on this one
 ---@field spec table Original spec fields
 ---@field _cond boolean|nil Internal flag set by init.lua when cond blocks loading
+---@field _has_build boolean|nil Cached: true if plugin has a build step (explicit or auto-detected)
 
 ---Normalize plugin specs
 ---@param plugins table List of plugin specs from user
@@ -142,6 +144,32 @@ function Parser.parse_all(plugins, defaults)
       error(string.format("packard: 'main' for '%s' must be a string", owner_repo))
     end
 
+    -- Validate build — accepts function, string, false, or list of strings/functions
+    local build = spec.build
+    if build ~= nil then
+      if type(build) == "table" then
+        for i, b in ipairs(build) do
+          if type(b) ~= "string" and type(b) ~= "function" then
+            error(
+              string.format(
+                "packard: 'build' for '%s' must be a string, function, or list of strings/functions (element %d is %s)",
+                owner_repo,
+                i,
+                type(b)
+              )
+            )
+          end
+        end
+      elseif type(build) ~= "string" and type(build) ~= "function" and build ~= false then
+        error(
+          string.format(
+            "packard: 'build' for '%s' must be a string, function, false, or list of strings/functions",
+            owner_repo
+          )
+        )
+      end
+    end
+
     -- Normalize dependencies to canonical owner/repo strings
     local deps
     if spec.dependencies then
@@ -186,6 +214,7 @@ function Parser.parse_all(plugins, defaults)
       cmd = spec.cmd,
       keys = spec.keys,
       ft = spec.ft,
+      build = spec.build,
       ai_review = spec.ai_review,
       cond = spec.cond,
       dependencies = deps,

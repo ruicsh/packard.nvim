@@ -76,6 +76,7 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 | `main` | `string` | Override the auto-detected Lua module name used by `config` and `opts` auto-setup. Useful when the plugin's module name doesn't match the repo name. |
 | `init` | `function` | Function called at **startup** before the plugin loads: `function(plugin)`. Useful for setting `vim.g.*` values that VimScript plugins check at startup. Runs for all plugins regardless of `lazy` setting. |
 | `opts` | `table` or `function` | Options passed to the `config` function. If `config` is absent but `opts` is present, auto-invokes `require(MAIN).setup(opts)`. Can also be a function returning a table. |
+| `build` | `function\|string\|string[]\|false` | Post-install/update build step. Supports Lua functions, `:Commands`, `*.lua` files, shell commands, and lists. Auto-detects `build.lua` / `build/init.lua`. Set to `false` to disable. |
 
 Example:
 ```lua
@@ -184,12 +185,52 @@ Packard supports various ways to pin your plugins:
 
 Semver ranges follow [lazy.nvim](https://github.com/folke/lazy.nvim) conventions. Pre-release tags (e.g., `-beta`) are excluded from ranges unless the range explicitly starts with a pre-release.
 
+## Build Support
+
+Packard supports post-install and post-update build steps, matching lazy.nvim conventions. The `build` field is executed after a plugin is first installed and after each update.
+
+| Type | Example | Description |
+|---|---|---|
+| `fun(plugin)` | `build = function(p) ... end` | Lua function called with the plugin table |
+| `":Command"` | `build = ":TSUpdate"` | Neovim command executed via `nvim_cmd` |
+| `"*.lua"` | `build = "build.lua"` | Lua file loaded from the plugin directory |
+| Shell command | `build = "make"` | Run via `vim.system()` in the plugin directory |
+| List | `build = { "make", ":TSUpdate" }` | Multiple steps run sequentially |
+| Auto-detect | (no `build` field) | Uses `build.lua` or `build/init.lua` if present |
+| `false` | `build = false` | Explicitly skip build (even if `build.lua` exists) |
+
+Examples:
+
+```lua
+{
+  "nvim-treesitter/nvim-treesitter",
+  build = ":TSUpdate",
+},
+{
+  "nvim-telescope/telescope-fzf-native.nvim",
+  build = "make",
+},
+{
+  "some/plugin",
+  build = function(plugin)
+    vim.fn.system({ "make", "-C", plugin.dir })
+  end,
+},
+{
+  "another/plugin",
+  build = { "make", ":TSUpdate" },
+},
+```
+
+Run `:Packard build <name>` to manually rebuild a plugin, or `:Packard build` to rebuild all plugins with build steps. In the dashboard, press `B` on a plugin row to rebuild it.
+
 ## Usage
 
 - `:Packard` - Open the dashboard.
 - `:Packard check` - Check for new commits (async).
 - `:Packard review` - Open dashboard to the Pending tab.
 - `:Packard summary` - View history of applied updates.
+- `:Packard build [name]` - Rebuild a plugin (or all plugins with build steps).
 - `:Packard help` - Show dashboard keybindings.
 - `:checkhealth packard` - Check plugin health and consistency.
 
@@ -202,7 +243,10 @@ Semver ranges follow [lazy.nvim](https://github.com/folke/lazy.nvim) conventions
 - `<CR>`: Approve update (on Pending tab).
 - `a`: Trigger/Toggle AI Review inline.
 - `A`: Force re-run AI Review (bypass cache).
+- `a`: Trigger/Toggle AI Review inline.
+- `A`: Force re-run AI Review (bypass cache).
 - `r`: Reject and blacklist commit (on Pending tab).
+- `B`: Rebuild plugin under cursor.
 - `gx`: Open forge compare URL (GitHub/GitLab/Bitbucket).
 - `q` / `<Esc>`: Close dashboard.
 

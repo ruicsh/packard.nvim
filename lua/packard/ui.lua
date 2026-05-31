@@ -5,6 +5,7 @@ local Lockfile = require("packard.lockfile")
 local URL = require("packard.url")
 local Orphans = require("packard.orphans")
 local ns = vim.api.nvim_create_namespace("packard")
+local Build = require("packard.build")
 
 UI.win = nil
 UI.buf = nil
@@ -239,6 +240,9 @@ function UI.setup_keymaps()
     end,
     ["R"] = function()
       UI.handle_ai_review({ force = true })
+    end,
+    ["B"] = function()
+      UI.handle_build()
     end,
   }
 
@@ -719,6 +723,9 @@ function UI.render_installed(lines)
       end
       if plugin._cond then
         name_display = name_display .. " [cond]"
+      end
+      if plugin._has_build then
+        name_display = name_display .. " [build]"
       end
 
       table.insert(lines, string.format(fmt, icon, name_display, commit:sub(1, 7), branch_display, cooldown))
@@ -1345,6 +1352,38 @@ function UI.handle_compare()
   end
 end
 
+function UI.handle_build()
+  local line = vim.api.nvim_win_get_cursor(UI.win)[1]
+  local owner_repo = UI.line_map[line]
+  if not owner_repo then
+    return
+  end
+
+  -- Find the plugin
+  local plugin
+  for _, p in ipairs(UI.plugins) do
+    if p.owner_repo == owner_repo then
+      plugin = p
+      break
+    end
+  end
+
+  if not plugin then
+    return
+  end
+
+  print(string.format("packard: building '%s'...", plugin.owner_repo))
+  local ok = Build.run(plugin, { force = true })
+  if ok then
+    print(string.format("packard: build succeeded for '%s'", plugin.owner_repo))
+  else
+    print(string.format("packard: build failed for '%s' (see errors above)", plugin.owner_repo))
+  end
+
+  -- Refresh the dashboard
+  UI.render()
+end
+
 function UI.handle_log()
   if UI.tab ~= "pending" and UI.tab ~= "installed" then
     return
@@ -1542,6 +1581,7 @@ function UI.render_help(lines)
   table.insert(lines, "    gx         Compare changes in browser")
   table.insert(lines, "    r          Toggle AI Review (inline)")
   table.insert(lines, "    R          Force re-run AI Review")
+  table.insert(lines, "    B          Rebuild plugin under cursor")
   table.insert(lines, "")
   table.insert(lines, "    q/<Esc>    Close dashboard")
 end
