@@ -237,17 +237,20 @@ Run `:Packard build <name>` to manually rebuild a plugin, or `:Packard build` to
 ### Dashboard Keybindings
 
 - `i`: Switch to **Installed** tab.
+- `U`: Switch to **Update** tab / Check for updates.
 - `p`: Switch to **Pending** tab.
 - `s`: Switch to **Summary** (History) tab.
+- `c`: Switch to **Clean** tab.
 - `?`: Show help overlay.
-- `<CR>`: Approve update (on Pending tab).
-- `a`: Trigger/Toggle AI Review inline.
-- `A`: Force re-run AI Review (bypass cache).
-- `a`: Trigger/Toggle AI Review inline.
-- `A`: Force re-run AI Review (bypass cache).
-- `r`: Reject and blacklist commit (on Pending tab).
+- `j/k`: Navigate list.
+- `<CR>`: Show commit log inline (Installed/Pending tabs).
+- `<Space>` / `x`: Toggle selection (Clean tab).
+- `A`: Approve pending update (Pending tab).
+- `X`: Reject pending update / Clean selected orphans.
+- `gx`: Open forge compare URL in browser.
+- `r`: Toggle AI Review inline.
+- `R`: Force re-run AI Review (bypass cache).
 - `B`: Rebuild plugin under cursor.
-- `gx`: Open forge compare URL (GitHub/GitLab/Bitbucket).
 - `q` / `<Esc>`: Close dashboard.
 
 ## Security Model

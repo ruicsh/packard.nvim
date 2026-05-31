@@ -12,7 +12,7 @@ Thank you for your interest in contributing to `packard.nvim`! This document pro
 - **`lua/packard/fetch.lua`**: Handles parallel `git fetch` operations to check for updates.
 - **`lua/packard/cooldown.lua`**: Logic for managing discovery timestamps and eligibility.
 - **`lua/packard/state.lua`**: Persistence layer for the machine-local queue, blacklist, and history.
-- **`lua/packard/ui.lua`**: The dashboard UI, built on Neovim's floating window and buffer APIs.
+- **`lua/packard/ui.lua`**: The dashboard UI, built on Neovim's floating window and buffer APIs. Tabs: Installed, Update, Pending, Summary, Clean, Help.
 - **`lua/packard/lockfile.lua`**: Interface for Neovim's built-in `nvim-pack-lock.json`.
 
 For a detailed design blueprint, see `SPEC.md`.

@@ -80,6 +80,129 @@ Helpers.describe("UI Dashboard", function()
     UI.close()
   end)
 
+  Helpers.it("opens update tab with idle state", function()
+    UI.open({}, "update")
+    UI._do_render()
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local found_prompt = false
+    for _, line in ipairs(lines) do
+      if line:match("Press U to check") then
+        found_prompt = true
+        break
+      end
+    end
+    Helpers.expect(found_prompt).to_be_truthy()
+    UI.close()
+  end)
+
+  Helpers.it("renders update tab done state with results", function()
+    UI.open({}, "update")
+    UI.check_state = "done"
+    UI.check_new_count = 3
+    UI.check_eligible = 1
+    UI.check_cooldown = 2
+    UI._do_render()
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local found_count = false
+    local found_eligible = false
+    for _, line in ipairs(lines) do
+      if line:match("3 new commit") then
+        found_count = true
+      end
+      if line:match("1 eligible") then
+        found_eligible = true
+      end
+    end
+    Helpers.expect(found_count).to_be_truthy()
+    Helpers.expect(found_eligible).to_be_truthy()
+    UI.check_state = "idle"
+    UI.check_new_count = 0
+    UI.check_eligible = 0
+    UI.check_cooldown = 0
+    UI.close()
+  end)
+
+  Helpers.it("renders update tab done state with no results", function()
+    UI.open({}, "update")
+    UI.check_state = "done"
+    UI.check_new_count = 0
+    UI.check_eligible = 0
+    UI.check_cooldown = 0
+    UI._do_render()
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local found_up_to_date = false
+    for _, line in ipairs(lines) do
+      if line:match("All plugins are up to date") then
+        found_up_to_date = true
+        break
+      end
+    end
+    Helpers.expect(found_up_to_date).to_be_truthy()
+    UI.check_state = "idle"
+    UI.check_new_count = 0
+    UI.check_eligible = 0
+    UI.check_cooldown = 0
+    UI.close()
+  end)
+
+  Helpers.it("renders update tab error state", function()
+    UI.open({}, "update")
+    UI.check_state = "error"
+    UI.check_error_msg = "network unreachable"
+    UI._do_render()
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local found_error = false
+    for _, line in ipairs(lines) do
+      if line:match("network unreachable") then
+        found_error = true
+        break
+      end
+    end
+    Helpers.expect(found_error).to_be_truthy()
+    UI.check_state = "idle"
+    UI.check_new_count = 0
+    UI.check_eligible = 0
+    UI.check_cooldown = 0
+    UI.check_error_msg = nil
+    UI.close()
+  end)
+
+  Helpers.it("renders update tab running state", function()
+    UI.open({}, "update")
+    UI.check_state = "running"
+    UI._do_render()
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local found_running = false
+    for _, line in ipairs(lines) do
+      if line:match("Checking for updates") then
+        found_running = true
+        break
+      end
+    end
+    Helpers.expect(found_running).to_be_truthy()
+    UI.check_state = "idle"
+    UI.check_new_count = 0
+    UI.check_eligible = 0
+    UI.check_cooldown = 0
+    UI.check_error_msg = nil
+    UI.close()
+  end)
+
+  Helpers.it("shows U keybinding in help tab", function()
+    UI.open({}, "help")
+    UI._do_render()
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local found_u = false
+    for _, line in ipairs(lines) do
+      if line:match("Check for updates") and line:match("U") then
+        found_u = true
+        break
+      end
+    end
+    Helpers.expect(found_u).to_be_truthy()
+    UI.close()
+  end)
+
   Helpers.it("renders AI expansion", function()
     UI.open({}, "pending")
     UI.ai_results = {

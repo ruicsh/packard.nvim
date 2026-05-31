@@ -25,6 +25,11 @@ UI.spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "�
 UI.spinner_idx = 1
 UI.spinner_timer = nil
 UI._highlight_config = nil
+UI.check_state = "idle" -- "idle" | "running" | "done" | "error"
+UI.check_new_count = 0
+UI.check_eligible = 0
+UI.check_cooldown = 0
+UI.check_error_msg = nil
 
 ---Open the dashboard
 ---@param plugins table NormalizedPlugin[]
@@ -245,6 +250,18 @@ function UI.setup_keymaps()
     ["B"] = function()
       UI.handle_build()
     end,
+    ["U"] = function()
+      local packard = require("packard")
+      if packard._is_checking then
+        print("packard: update check already in progress")
+        return
+      end
+      UI.tab = "update"
+      UI.expanded_row = nil
+      UI.expanded_type = nil
+      UI._cursor_repo = nil
+      packard.check()
+    end,
   }
 
   for key, action in pairs(maps) do
@@ -263,6 +280,11 @@ function UI.close()
   UI.expanded_row = nil
   UI.expanded_type = nil
   UI._cursor_repo = nil
+  UI.check_state = "idle"
+  UI.check_new_count = 0
+  UI.check_eligible = 0
+  UI.check_cooldown = 0
+  UI.check_error_msg = nil
   UI._stop_spinner()
 end
 
@@ -290,6 +312,7 @@ function UI._do_render()
   table.insert(lines, "") -- 1. empty line at top
   local tabs = {
     { id = "installed", label = "Installed", key = "i" },
+    { id = "update", label = "Update", key = "U" },
     { id = "pending", label = "Pending", key = "p" },
     { id = "summary", label = "Summary", key = "s" },
     { id = "clean", label = "Clean", key = "c" },
@@ -331,6 +354,8 @@ function UI._do_render()
 
   if UI.tab == "installed" then
     UI.render_installed(lines)
+  elseif UI.tab == "update" then
+    UI.render_update(lines)
   elseif UI.tab == "pending" then
     UI.render_pending(lines)
   elseif UI.tab == "summary" then
@@ -1581,6 +1606,7 @@ function UI.render_help(lines)
   table.insert(lines, "    p          Switch to Pending tab")
   table.insert(lines, "    s          Switch to Summary tab")
   table.insert(lines, "    c          Switch to Clean tab")
+  table.insert(lines, "    U          Check for updates (Update tab)")
   table.insert(lines, "    ?          Show this help")
   table.insert(lines, "")
   table.insert(lines, "    j/k        Navigate list")
@@ -1594,6 +1620,42 @@ function UI.render_help(lines)
   table.insert(lines, "    B          Rebuild plugin under cursor")
   table.insert(lines, "")
   table.insert(lines, "    q/<Esc>    Close dashboard")
+end
+
+function UI.render_update(lines)
+  if UI.check_state == "idle" then
+    table.insert(lines, "  Update Check")
+    table.insert(lines, "")
+    table.insert(lines, "  Press U to check for updates.")
+    table.insert(lines, "")
+    table.insert(lines, "  This will fetch the latest commits from all remotes")
+    table.insert(lines, "  and queue new commits for review.")
+  elseif UI.check_state == "running" then
+    table.insert(lines, "  Checking for updates...")
+    table.insert(lines, "")
+    table.insert(lines, "  Fetching latest commits from all remotes.")
+    table.insert(lines, "  Results will appear here when complete.")
+  elseif UI.check_state == "error" then
+    table.insert(lines, "  Update Check Failed")
+    table.insert(lines, "")
+    table.insert(lines, "  " .. (UI.check_error_msg or "Unknown error"))
+    table.insert(lines, "")
+    table.insert(lines, "  Press U to retry.")
+  elseif UI.check_state == "done" then
+    table.insert(lines, "  Update Check Complete")
+    table.insert(lines, "")
+    if UI.check_new_count == 0 then
+      table.insert(lines, "  All plugins are up to date.")
+    else
+      table.insert(lines, string.format("  %d new commit(s) queued:", UI.check_new_count))
+      table.insert(lines, string.format("    - %d eligible (cooldown expired)", UI.check_eligible))
+      table.insert(lines, string.format("    - %d in cooldown", UI.check_cooldown))
+      table.insert(lines, "")
+      table.insert(lines, "  Press p to switch to the Pending tab to review.")
+    end
+    table.insert(lines, "")
+    table.insert(lines, "  Press U to check again.")
+  end
 end
 
 function UI.set_progress(current, total, message)

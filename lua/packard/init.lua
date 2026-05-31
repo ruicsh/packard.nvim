@@ -969,6 +969,8 @@ function M.check()
     return
   end
   M._is_checking = true
+  UI.check_state = "running"
+  UI.check_error_msg = nil
 
   print("packard: checking for updates...")
 
@@ -986,6 +988,8 @@ function M.check()
   end
 
   if not ok then
+    UI.check_state = "error"
+    UI.check_error_msg = tostring(results)
     if tostring(results):match("network unreachable") then
       M._is_offline = true
       print("packard: skipping update check (offline)")
@@ -1054,6 +1058,11 @@ function M.check()
       eligible
     )
   )
+
+  UI.check_state = "done"
+  UI.check_new_count = new_count
+  UI.check_eligible = eligible
+  UI.check_cooldown = in_cooldown
 
   M._is_checking = false
   if UI.win and vim.api.nvim_win_is_valid(UI.win) then
