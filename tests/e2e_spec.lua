@@ -73,6 +73,9 @@ end
 local original_pack = vim.pack
 vim.pack = {
   add = function() end,
+  get = function()
+    return {}
+  end,
   update = function()
     -- Simulate PackChanged
     vim.api.nvim_exec_autocmds("User", { pattern = "PackChanged" })
@@ -166,6 +169,10 @@ Helpers.describe("End-to-end flow", function()
       add_called = true
       error("fatal: could not read Username for 'https://github.com': Device not configured")
     end
+    -- Mock vim.pack.get to return nothing (nothing got installed)
+    vim.pack.get = function()
+      return {}
+    end
 
     -- Setup must not crash
     local setup_ok, setup_err = pcall(packard.setup, {
@@ -189,15 +196,24 @@ Helpers.describe("End-to-end flow", function()
     --[[@diagnostic disable-next-line: invisible]]
     packard._is_offline = false
 
-    local installed = {}
-    local bad_attempted = false
+    -- With batch install, vim.pack.add is called once with all specs.
+    -- Neovim installs them in parallel; if one fails it throws, but the
+    -- others may still be on disk. We simulate this by having the mock
+    -- throw and having vim.pack.get return only the successful ones.
     vim.pack.add = function(specs)
-      local name = specs[1].name
-      if name == "repo" then
-        bad_attempted = true
-        error("fatal: could not read Username for 'https://github.com': Device not configured")
+      -- Check if any spec in the batch is "bad"
+      for _, spec in ipairs(specs) do
+        if spec.name == "repo" then
+          error("fatal: could not read Username for 'https://github.com': Device not configured")
+        end
       end
-      table.insert(installed, name)
+    end
+    -- Mock vim.pack.get to return only the successfully installed plugins
+    vim.pack.get = function()
+      return {
+        { spec = { name = "repo1" } },
+        { spec = { name = "repo2" } },
+      }
     end
 
     packard.setup({
@@ -205,12 +221,57 @@ Helpers.describe("End-to-end flow", function()
       self_management = false,
     })
 
-    Helpers.expect(bad_attempted).to_be_truthy()
-    Helpers.expect(#installed).to_be(2)
-    Helpers.expect(installed[1]).to_be("repo1")
-    Helpers.expect(installed[2]).to_be("repo2")
     --[[@diagnostic disable-next-line: invisible]]
     Helpers.expect(packard._is_offline).to_be_truthy()
+  end)
+
+  Helpers.it("reports per-plugin error messages from batch install", function()
+    -- Reset state
+    --[[@diagnostic disable-next-line: invisible]]
+    packard._is_offline = false
+
+    -- Mock vim.pack.add to throw with Neovim's structured error format
+    vim.pack.add = function(specs)
+      error(
+        "vim.pack:\n\n"
+          .. "`repo`:\n"
+          .. "fatal: could not read Username for 'https://github.com': Device not configured\n\n"
+          .. "`repo2`:\n"
+          .. "fatal: unable to access 'https://github.com/user/repo2.git': Could not resolve host"
+      )
+    end
+    vim.pack.get = function()
+      return {
+        { spec = { name = "repo1" } },
+      }
+    end
+
+    -- Capture vim.notify calls
+    local notifications = {}
+    local original_notify = vim.notify
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.notify = function(msg, level)
+      table.insert(notifications, { msg = msg, level = level })
+    end
+
+    packard.setup({
+      plugins = { "good/repo1", "bad/repo", "bad2/repo2" },
+      self_management = false,
+    })
+
+    vim.notify = original_notify
+
+    -- Should have one error notification
+    Helpers.expect(#notifications).to_be(1)
+    local n = notifications[1]
+    Helpers.expect(n.level).to_be(vim.log.levels.ERROR)
+
+    -- Should contain the specific error message for repo (auth error)
+    Helpers.expect(n.msg:match("repo:") ~= nil).to_be_truthy()
+    Helpers.expect(n.msg:match("Device not configured") ~= nil).to_be_truthy()
+    -- Should contain the specific error message for repo2 (network error)
+    Helpers.expect(n.msg:match("repo2:") ~= nil).to_be_truthy()
+    Helpers.expect(n.msg:match("Could not resolve host") ~= nil).to_be_truthy()
   end)
 end)
 

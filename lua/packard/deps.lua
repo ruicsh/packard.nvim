@@ -103,6 +103,11 @@ function Deps.verify_and_install(plugins)
     seen_owner_repos[p.owner_repo] = true
   end
 
+  -- Collect all dependency specs for a single batch vim.pack.add() call.
+  -- Keyed by owner_repo to deduplicate and accumulate depended_by lists.
+  ---@type table<string, {pack_spec: table, owner_repo: string, name: string, url: string, module: string, depended_by: string[]}>
+  local dep_map = {}
+
   for _, plugin in ipairs(plugins) do
     local path = Utils.get_plugin_path(plugin.name)
     if vim.fn.isdirectory(path) == 1 then
@@ -131,39 +136,68 @@ function Deps.verify_and_install(plugins)
           end
 
           if owner_repo and not seen_owner_repos[owner_repo] then
-            -- Auto-install and track
             local name = owner_repo:match("/([^/]+)$")
             if name then
               local url = "https://github.com/" .. owner_repo .. ".git"
-              local pack_spec = {
-                src = url,
-                name = name,
-                opt = true, -- Auto-deps should follow packard's lazy default
-              }
-              --[[@diagnostic disable-next-line: redundant-parameter]]
-              local ok, _ = pcall(vim.pack.add, { pack_spec }, { confirm = false })
-              if ok then
-                -- Build a minimal NormalizedPlugin for tracking
-                local new_p = {
+              if not dep_map[owner_repo] then
+                dep_map[owner_repo] = {
+                  pack_spec = {
+                    src = url,
+                    name = name,
+                    opt = true, -- Auto-deps should follow packard's lazy default
+                  },
                   owner_repo = owner_repo,
                   name = name,
                   url = url,
-                  lazy = true,
-                  minimum_release_age = 30,
-                  is_dependency = true,
-                  depended_by = { plugin.owner_repo },
+                  module = module,
+                  depended_by = {},
                 }
-                table.insert(new_plugins, new_p)
-                seen_owner_repos[owner_repo] = true
-
-                -- Add to available set so subsequent plugins see it
-                local mod_prefix = module:match("^([^%.]+)") or module
-                available[mod_prefix] = true
-                available[module] = true
               end
+              table.insert(dep_map[owner_repo].depended_by, plugin.owner_repo)
+              seen_owner_repos[owner_repo] = true
             end
           end
         end
+      end
+    end
+  end
+
+  -- Batch install all collected dependencies in a single vim.pack.add() call
+  local dep_specs = vim.tbl_values(dep_map)
+  if #dep_specs > 0 then
+    local specs_for_add = {}
+    for _, dep in ipairs(dep_specs) do
+      specs_for_add[#specs_for_add + 1] = dep.pack_spec
+    end
+
+    -- Offline detection is handled by the caller (_bootstrap) which calls
+    -- vim.pack.add for the primary plugins before this. Dependency failures
+    -- are silently skipped — vim.pack.get() below still reflects the truth.
+    --[[@diagnostic disable-next-line: redundant-parameter]]
+    pcall(vim.pack.add, specs_for_add, { confirm = false })
+
+    -- Check which dependencies actually made it to disk
+    local installed = {}
+    for _, p in ipairs(vim.pack.get()) do
+      installed[p.spec.name] = true
+    end
+
+    for _, dep in ipairs(dep_specs) do
+      if installed[dep.name] then
+        table.insert(new_plugins, {
+          owner_repo = dep.owner_repo,
+          name = dep.name,
+          url = dep.url,
+          lazy = true,
+          minimum_release_age = 30,
+          is_dependency = true,
+          depended_by = dep.depended_by,
+        })
+
+        -- Add to available set so subsequent plugins see it
+        local mod_prefix = dep.module:match("^([^%.]+)") or dep.module
+        available[mod_prefix] = true
+        available[dep.module] = true
       end
     end
   end

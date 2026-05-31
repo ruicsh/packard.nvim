@@ -21,13 +21,24 @@ Utils.get_plugin_path = function(_)
   return mock_plugin_path
 end
 
--- Mock vim.pack.add
+-- Mock vim.pack.add and vim.pack.get
 local add_calls = {}
 --[[@diagnostic disable-next-line: duplicate-set-field]]
 vim.pack = {
   add = function(specs, opts)
     table.insert(add_calls, { specs = specs, opts = opts })
     return true
+  end,
+  get = function()
+    -- Return all specs from the last add call as "installed"
+    if #add_calls > 0 then
+      local result = {}
+      for _, spec in ipairs(add_calls[#add_calls].specs) do
+        result[#result + 1] = { spec = spec }
+      end
+      return result
+    end
+    return {}
   end,
 }
 

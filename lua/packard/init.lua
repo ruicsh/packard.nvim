@@ -425,23 +425,55 @@ function M._bootstrap()
   end
 
   -- Call Neovim's built-in pack manager
+  -- Pass all specs in a single vim.pack.add() call so Neovim installs them
+  -- in parallel with a unified progress indicator instead of one-by-one.
   if vim.pack and vim.pack.add then
-    local failed = {}
+    -- Build all specs upfront
+    local all_specs = {}
     for _, plugin in ipairs(M.plugins) do
       local pack_spec = build_pack_spec(plugin)
-      -- confirm=false because packard manages plugins programmatically:
-      -- user opted in by listing them in packard.setup().  vim.pack.add
-      -- defaults to confirm=true which prompts mid-startup and can hang
-      -- or fail when run headless or from an init script.
-      --[[@diagnostic disable-next-line: redundant-parameter]]
-      local ok, err = pcall(vim.pack.add, { pack_spec }, { confirm = false })
-      if not ok then
-        local err_msg = tostring(err)
-        table.insert(failed, { owner_repo = plugin.owner_repo, error = err_msg })
-        -- Check for common git auth/network errors to set offline flag
-        if err_msg:match("Username") or err_msg:match("Device not configured") or err_msg:match("network") then
-          M._is_offline = true
-        end
+      table.insert(all_specs, pack_spec)
+    end
+
+    -- confirm=false because packard manages plugins programmatically:
+    -- user opted in by listing them in packard.setup().  vim.pack.add
+    -- defaults to confirm=true which prompts mid-startup and can hang
+    -- or fail when run headless or from an init script.
+    --[[@diagnostic disable-next-line: redundant-parameter]]
+    local ok, err = pcall(vim.pack.add, all_specs, { confirm = false })
+
+    -- Check for common git auth/network errors to set offline flag
+    if not ok then
+      local err_msg = tostring(err)
+      if err_msg:match("Username") or err_msg:match("Device not configured") or err_msg:match("network") then
+        M._is_offline = true
+      end
+    end
+
+    -- Determine which plugins actually made it to disk.
+    -- vim.pack.get() returns plugins successfully registered via vim.pack.add(),
+    -- so any expected plugin missing from it failed during installation.
+    local installed = {}
+    for _, p in ipairs(vim.pack.get()) do
+      installed[p.spec.name] = true
+    end
+
+    -- Parse per-plugin errors from the batch vim.pack.add() error.
+    -- Neovim formats these as: `name`:\n<message> separated by blank lines.
+    local batch_errors = {}
+    if not ok then
+      for name, msg in tostring(err):gmatch("`([^`]+)`:\n([^\n]+)") do
+        batch_errors[name] = msg
+      end
+    end
+
+    local failed = {}
+    for _, plugin in ipairs(M.plugins) do
+      if not installed[plugin.name] then
+        table.insert(failed, {
+          owner_repo = plugin.owner_repo,
+          error = batch_errors[plugin.name] or "installation failed",
+        })
       end
     end
 
