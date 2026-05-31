@@ -72,8 +72,8 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 | `event` | `string\|string[]` | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`. |
 | `ft` | `string\|string[]` | Load on filetype(s). |
 | `lazy` | `boolean` | If `false`, load immediately on startup (default: `true`). |
-| `config` | `function` | Function called after plugin loads: `function(plugin, opts)`. |
-| `opts` | `table` | Options passed to the `config` function. |
+| `config` | `function` | Function called after plugin loads: `function(plugin, opts)`. Optional — if omitted but `opts` is present, Packard auto-calls `require("plugin").setup(opts)`. |
+| `opts` | `table` | Options passed to the `config` function. If `config` is absent, auto-invokes `require("plugin").setup(opts)`. |
 
 Example:
 ```lua
@@ -83,6 +83,19 @@ Example:
     { "<leader><space>", function() Snacks.picker.smart() end, desc = "Smart Picker" },
     { "<leader>,", function() Snacks.picker.buffers() end, desc = "Buffers" },
   },
+  opts = {
+    picker = { enabled = true }
+  },
+  -- config is optional when opts is provided:
+  -- Packard auto-calls require("snacks").setup(opts)
+}
+```
+
+If you need custom setup logic, provide an explicit `config`:
+
+```lua
+{
+  "folke/snacks.nvim",
   opts = {
     picker = { enabled = true }
   },

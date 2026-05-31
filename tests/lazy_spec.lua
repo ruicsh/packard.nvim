@@ -619,6 +619,106 @@ Helpers.describe("Lazy Loading", function()
     Helpers.expect(ok).to_be(false)
   end)
 
+  Helpers.it("opts without config auto-calls setup() on plugin module", function()
+    local setup_opts = nil
+    package.loaded["auto-setup-mod"] = {
+      setup = function(opts)
+        setup_opts = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/auto-setup-mod",
+          opts = { enabled = true, picker = { layout = "default" } },
+        },
+      },
+    })
+
+    -- setup() should have been called with the opts table
+    Helpers.expect(setup_opts).to_be_truthy()
+    Helpers.expect(setup_opts.enabled).to_be(true)
+    Helpers.expect(setup_opts.picker.layout).to_be("default")
+
+    package.loaded["auto-setup-mod"] = nil
+  end)
+
+  Helpers.it("strips .nvim suffix when resolving module for auto-config", function()
+    local setup_called_with = nil
+    -- Plugin name will be "snacks.nvim" (from "folke/snacks.nvim"), auto-config should require "snacks"
+    package.loaded["snacks"] = {
+      setup = function(opts)
+        setup_called_with = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "folke/snacks.nvim",
+          opts = { picker = { enabled = true } },
+        },
+      },
+    })
+
+    Helpers.expect(setup_called_with).to_be_truthy()
+    Helpers.expect(setup_called_with.picker.enabled).to_be(true)
+
+    package.loaded["snacks"] = nil
+  end)
+
+  Helpers.it("does not error when plugin module has no setup()", function()
+    -- Module exists but has no setup() function — auto-config should silently skip.
+    -- Test passes by not crashing: if auto-config errors, the runner catches it.
+    package.loaded["no-setup-mod"] = {}
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "bar/no-setup-mod",
+          opts = { foo = "bar" },
+        },
+      },
+    })
+
+    package.loaded["no-setup-mod"] = nil
+  end)
+
+  Helpers.it("explicit config takes priority over auto-config from opts", function()
+    local config_called = false
+    local auto_setup_called = false
+
+    package.loaded["priority-test-mod"] = {
+      setup = function()
+        auto_setup_called = true
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "baz/priority-test-mod",
+          opts = { val = 1 },
+          config = function(_, opts)
+            config_called = true
+          end,
+        },
+      },
+    })
+
+    -- Explicit config should have been called
+    Helpers.expect(config_called).to_be(true)
+    -- Auto-config should NOT have been called
+    Helpers.expect(auto_setup_called).to_be(false)
+
+    package.loaded["priority-test-mod"] = nil
+  end)
+
   -- Restore mocks
   vim.pack.add = original_pack_add
   vim.fn.isdirectory = original_isdirectory

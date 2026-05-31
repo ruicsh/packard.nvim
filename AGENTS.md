@@ -48,7 +48,7 @@ TESTS="tests/parser_spec.lua tests/state_spec.lua" make test
 
 - **Formatter**: `stylua` (120 col width, 2-space indent, double quotes — see `stylua.toml`).
 - **Lua LSP**: `lua-language-server` with config in `.luarc.json` (LuaJIT runtime, `$VIMRUNTIME/lua` workspace).
-- **Spec format**: lazy.nvim-compatible (`"owner/repo"` or `{ "owner/repo", … }`) with packard-specific field `minimum_release_age`.
+- **Spec format**: lazy.nvim-compatible (`"owner/repo"` or `{ "owner/repo", … }`). `opts` without `config` auto-calls `require("plugin").setup(opts)`.
 - **Self-management**: packard auto-prepends itself to the plugin list unless `self_management = false`.
 - **Concurrent safety**: `_is_checking` flag prevents overlapping `:Packard check` runs.
 - **Ignore `harper_ls` diagnostics** on Markdown files (README, AGENTS, etc.) — prose linting suggestions, not bugs or required fixes.
