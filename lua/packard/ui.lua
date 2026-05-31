@@ -695,6 +695,9 @@ function UI.render_installed(lines)
     if plugin.is_dependency then
       name_display = name_display .. " [dep]"
     end
+    if plugin._cond then
+      name_display = name_display .. " [cond]"
+    end
     max_name_len = math.max(max_name_len, vim.fn.strdisplaywidth(name_display))
     max_branch_len = math.max(max_branch_len, vim.fn.strdisplaywidth(get_branch_display(plugin)))
   end
@@ -713,6 +716,9 @@ function UI.render_installed(lines)
       local name_display = plugin.owner_repo
       if plugin.is_dependency then
         name_display = name_display .. " [dep]"
+      end
+      if plugin._cond then
+        name_display = name_display .. " [cond]"
       end
 
       table.insert(lines, string.format(fmt, icon, name_display, commit:sub(1, 7), branch_display, cooldown))
@@ -779,6 +785,9 @@ function UI.render_pending(lines)
         if p.is_dependency then
           name_display = name_display .. " [dep]"
         end
+        if p._cond then
+          name_display = name_display .. " [cond]"
+        end
         break
       end
     end
@@ -811,6 +820,9 @@ function UI.render_pending(lines)
       local name_display = owner_repo
       if plugin and plugin.is_dependency then
         name_display = name_display .. " [dep]"
+      end
+      if plugin and plugin._cond then
+        name_display = name_display .. " [cond]"
       end
 
       local cooldown_text = entry.remaining_days and string.format("%d days remaining", entry.remaining_days)

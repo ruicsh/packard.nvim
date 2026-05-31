@@ -80,6 +80,61 @@ describe("Spec Loader", function()
     cleanup()
   end)
 
+  it("should handle cond = false from file-loaded spec", function()
+    local files = {
+      ["p1.lua"] = [[return { "cond/a", cond = false }]],
+      ["p2.lua"] = [[return { "cond/b" }]],
+    }
+    local dir, cleanup = helpers.with_temp_dir(files)
+
+    packard.setup({
+      self_management = false,
+      plugins_dir = dir,
+    })
+
+    -- Both plugins should be in M.plugins
+    expect(#packard.plugins).to_be(2)
+
+    local cond_a = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "cond/a" then
+        cond_a = p
+        break
+      end
+    end
+    expect(cond_a).to_be_truthy()
+    expect(cond_a._cond).to_be(true)
+
+    cleanup()
+  end)
+
+  it("should handle cond as function returning false from file-loaded spec", function()
+    local files = {
+      ["p1.lua"] = [[return { "cond/c", cond = function() return false end }]],
+      ["p2.lua"] = [[return { "cond/d" }]],
+    }
+    local dir, cleanup = helpers.with_temp_dir(files)
+
+    packard.setup({
+      self_management = false,
+      plugins_dir = dir,
+    })
+
+    expect(#packard.plugins).to_be(2)
+
+    local cond_c = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "cond/c" then
+        cond_c = p
+        break
+      end
+    end
+    expect(cond_c).to_be_truthy()
+    expect(cond_c._cond).to_be(true)
+
+    cleanup()
+  end)
+
   it("should merge with inline plugins and allow overrides", function()
     local files = {
       ["plugin.lua"] = [[return { "owner/repo", minimum_release_age = 50 }]],

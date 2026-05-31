@@ -733,6 +733,264 @@ Helpers.describe("Lazy Loading", function()
     Helpers.expect(ok).to_be(false)
   end)
 
+  Helpers.it("cond = false keeps plugin in M.plugins but marks _cond = true", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/cond-false", cond = false, keys = "<leader>cf" },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-false" then
+        plugin = p
+        break
+      end
+    end
+    -- Plugin should still be in M.plugins
+    Helpers.expect(plugin).to_be_truthy()
+    -- _cond should be set to true
+    Helpers.expect(plugin._cond).to_be(true)
+
+    -- No keymap stub should be set (trigger registration suppressed)
+    local map_ok = pcall(vim.keymap.del, "n", "<leader>cf")
+    Helpers.expect(map_ok).to_be(false)
+
+    -- No autocmd group should exist (trigger registration suppressed)
+    local au_ok = pcall(vim.api.nvim_del_augroup_by_name, "packard_load_cond-false")
+    Helpers.expect(au_ok).to_be(false)
+  end)
+
+  Helpers.it("cond = true leaves plugin loadable", function()
+    local config_called = false
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/cond-true",
+          cond = true,
+          config = function()
+            config_called = true
+          end,
+        },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-true" then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    -- _cond should NOT be set (nil is falsy, but let's check it's not true)
+    Helpers.expect(plugin._cond).to_be_nil()
+
+    -- Eager load should have fired since lazy is nil and no triggers
+    Helpers.expect(config_called).to_be(true)
+  end)
+
+  Helpers.it("cond as function returning false marks _cond", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/cond-fn-false",
+          cond = function()
+            return false
+          end,
+        },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-fn-false" then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    Helpers.expect(plugin._cond).to_be(true)
+  end)
+
+  Helpers.it("cond as function returning true does not mark _cond", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/cond-fn-true",
+          cond = function()
+            return true
+          end,
+        },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-fn-true" then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    Helpers.expect(plugin._cond).to_be_nil()
+  end)
+
+  Helpers.it("cond as function returning nil does not mark _cond", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/cond-fn-nil", cond = function() end },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-fn-nil" then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    Helpers.expect(plugin._cond).to_be_nil()
+  end)
+
+  Helpers.it("cond as function that errors does not mark _cond", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/cond-fn-error",
+          cond = function()
+            error("cond boom")
+          end,
+        },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-fn-error" then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    Helpers.expect(plugin._cond).to_be_nil()
+  end)
+
+  Helpers.it("cond as function returning string shows notification and loads", function()
+    local config_called = false
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/cond-fn-str",
+          cond = function()
+            return "custom message"
+          end,
+          config = function()
+            config_called = true
+          end,
+        },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-fn-str" then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    Helpers.expect(plugin._cond).to_be_nil()
+    -- Plugin should still load (string is truthy)
+    Helpers.expect(config_called).to_be(true)
+  end)
+
+  Helpers.it("cond on duplicate spec: last cond wins", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/cond-dup", cond = false },
+        { "foo/cond-dup", cond = true },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-dup" then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    -- Last occurrence's cond=true should win, so no _cond
+    Helpers.expect(plugin._cond).to_be_nil()
+
+    -- Same test but last is false
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/cond-dup2", cond = true },
+        { "foo/cond-dup2", cond = false },
+      },
+    })
+
+    local plugin2 = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-dup2" then
+        plugin2 = p
+        break
+      end
+    end
+    Helpers.expect(plugin2).to_be_truthy()
+    Helpers.expect(plugin2._cond).to_be(true)
+  end)
+
+  Helpers.it("cond = false suppresses all lazy-load triggers", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/cond-all-triggers",
+          cond = false,
+          keys = { { "<leader>ca", function() end } },
+          cmd = "CondAllTest",
+          event = "BufEnter",
+          ft = "lua",
+        },
+      },
+    })
+
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/cond-all-triggers" then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    Helpers.expect(plugin._cond).to_be(true)
+
+    -- No keymap stub
+    local map_ok = pcall(vim.keymap.del, "n", "<leader>ca")
+    Helpers.expect(map_ok).to_be(false)
+
+    -- No command stub
+    local cmd_ok = pcall(vim.api.nvim_del_user_command, "CondAllTest")
+    Helpers.expect(cmd_ok).to_be(false)
+
+    -- No autocmd group
+    local au_ok = pcall(vim.api.nvim_del_augroup_by_name, "packard_load_cond-all-triggers")
+    Helpers.expect(au_ok).to_be(false)
+  end)
+
   Helpers.it("opts without config auto-calls setup() on plugin module", function()
     local setup_opts = nil
     package.loaded["auto-setup-mod"] = {

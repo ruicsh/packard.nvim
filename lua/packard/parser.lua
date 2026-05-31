@@ -19,10 +19,12 @@ local Parser = {}
 ---@field keys string|string[]|table|function|nil
 ---@field ft string|string[]|table|nil
 ---@field ai_review table|nil Per-plugin AI config override
+---@field cond boolean|function|nil Conditional loading (evaluated once at setup)
 ---@field dependencies table[]|nil Array of { owner_repo: string, spec: any }
 ---@field is_dependency boolean|nil True if auto-injected
 ---@field depended_by string[]|nil Plugins that depend on this one
 ---@field spec table Original spec fields
+---@field _cond boolean|nil Internal flag set by init.lua when cond blocks loading
 
 ---Normalize plugin specs
 ---@param plugins table List of plugin specs from user
@@ -180,6 +182,7 @@ function Parser.parse_all(plugins, defaults)
       keys = spec.keys,
       ft = spec.ft,
       ai_review = spec.ai_review,
+      cond = spec.cond,
       dependencies = deps,
       is_dependency = is_dep,
       depended_by = {},
