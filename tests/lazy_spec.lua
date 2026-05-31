@@ -512,6 +512,89 @@ Helpers.describe("Lazy Loading", function()
     pcall(vim.api.nvim_del_augroup_by_name, "packard_load_merge-event")
   end)
 
+  Helpers.it("deep-merges opts from duplicate specs", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/opts-merge",
+          opts = { picker = { enabled = true } },
+        },
+        {
+          "foo/opts-merge",
+          opts = { zen = { enabled = true } },
+        },
+      },
+    })
+
+    -- Both sub-keys should be present in the merged opts
+    local p
+    for _, plug in ipairs(packard.plugins) do
+      if plug.owner_repo == "foo/opts-merge" then
+        p = plug
+        break
+      end
+    end
+    Helpers.expect(p).to_be_truthy()
+    Helpers.expect(p.opts.picker.enabled).to_be(true)
+    Helpers.expect(p.opts.zen.enabled).to_be(true)
+  end)
+
+  Helpers.it("later spec wins on conflicting nested opts keys", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/opts-conflict",
+          opts = { picker = { enabled = true, layout = "default" } },
+        },
+        {
+          "foo/opts-conflict",
+          opts = { picker = { enabled = false } },
+        },
+      },
+    })
+
+    local p
+    for _, plug in ipairs(packard.plugins) do
+      if plug.owner_repo == "foo/opts-conflict" then
+        p = plug
+        break
+      end
+    end
+    -- Later spec's enabled=false wins; layout from first spec is preserved
+    Helpers.expect(p.opts.picker.enabled).to_be(false)
+    Helpers.expect(p.opts.picker.layout).to_be("default")
+  end)
+
+  Helpers.it("non-table opts falls back to last-wins", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/opts-non-table",
+          opts = { picker = { enabled = true } },
+        },
+        {
+          "foo/opts-non-table",
+          opts = function()
+            return { zen = { enabled = true } }
+          end,
+        },
+      },
+    })
+
+    local p
+    for _, plug in ipairs(packard.plugins) do
+      if plug.owner_repo == "foo/opts-non-table" then
+        p = plug
+        break
+      end
+    end
+    -- Non-table opts from second spec wins (last-wins fallback)
+    Helpers.expect(type(p.opts)).to_be("function")
+  end)
+
   Helpers.it("later enabled = false removes plugin entirely", function()
     packard.setup({
       self_management = false,

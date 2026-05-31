@@ -656,12 +656,21 @@ function M.setup(opts)
           "lazy",
           "priority",
           "config",
-          "opts",
           "ai_review",
         }
         for _, field in ipairs(non_trigger) do
           if p[field] ~= nil then
             existing[field] = p[field]
+          end
+        end
+        -- opts is deep-merged: all duplicate specs' submodule configs compose together
+        -- (e.g. snacks.picker + snacks.zen both contribute to the final opts table)
+        if p.opts ~= nil then
+          if type(existing.opts) == "table" and type(p.opts) == "table" then
+            existing.opts = vim.tbl_deep_extend("force", existing.opts, p.opts)
+          else
+            -- Non-table opts (e.g. functions): fall back to last-wins
+            existing.opts = p.opts
           end
         end
       end
