@@ -128,6 +128,24 @@ describe("Spec Loader", function()
     cleanup()
   end)
 
+  it("should handle enabled as function returning false", function()
+    local files = {
+      ["p1.lua"] = [[return { "a/b", enabled = function() return false end }]],
+      ["p2.lua"] = [[return { "c/d" }]],
+    }
+    local dir, cleanup = helpers.with_temp_dir(files)
+
+    packard.setup({
+      self_management = false,
+      plugins_dir = dir,
+    })
+
+    expect(#packard.plugins).to_be(1)
+    expect(packard.plugins[1].owner_repo).to_be("c/d")
+
+    cleanup()
+  end)
+
   it("should scan recursively", function()
     local files = {
       ["top.lua"] = [[return { "top/plugin" }]],

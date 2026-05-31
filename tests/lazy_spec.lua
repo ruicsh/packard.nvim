@@ -445,7 +445,7 @@ Helpers.describe("Lazy Loading", function()
     Helpers.expect(ok).to_be(true)
   end)
 
-  Helpers.it("single-element { \"n\" } creates stub for key \"n\" in default mode", function()
+  Helpers.it('single-element { "n" } creates stub for key "n" in default mode', function()
     -- key[2] is nil, so the mode-detection guard falls through to the else branch,
     -- treating key[1] as lhs and defaulting mode to "n".
     packard.setup({
@@ -616,6 +616,120 @@ Helpers.describe("Lazy Loading", function()
 
     -- No stub should be set
     local ok = pcall(vim.keymap.del, "n", "<leader>et")
+    Helpers.expect(ok).to_be(false)
+  end)
+
+  Helpers.it("enabled as function returning true includes plugin", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/enabled-fn-true",
+          enabled = function()
+            return true
+          end,
+        },
+      },
+    })
+
+    local found = false
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/enabled-fn-true" then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be(true)
+  end)
+
+  Helpers.it("enabled as function returning false excludes plugin", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/enabled-fn-false",
+          enabled = function()
+            return false
+          end,
+        },
+      },
+    })
+
+    local found = false
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/enabled-fn-false" then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be(false)
+  end)
+
+  Helpers.it("enabled as function returning nil includes plugin", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/enabled-fn-nil", enabled = function() end },
+      },
+    })
+
+    local found = false
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/enabled-fn-nil" then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be(true)
+  end)
+
+  Helpers.it("enabled as function that errors includes plugin", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/enabled-fn-error",
+          enabled = function()
+            error("boom")
+          end,
+        },
+      },
+    })
+
+    local found = false
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/enabled-fn-error" then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be(true)
+  end)
+
+  Helpers.it("enabled function returning false on duplicate removes earlier spec", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        { "foo/enabled-dup", keys = "<leader>ed" },
+        {
+          "foo/enabled-dup",
+          enabled = function()
+            return false
+          end,
+        },
+      },
+    })
+
+    local found = false
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/enabled-dup" then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be(false)
+
+    local ok = pcall(vim.keymap.del, "n", "<leader>ed")
     Helpers.expect(ok).to_be(false)
   end)
 

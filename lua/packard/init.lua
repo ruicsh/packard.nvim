@@ -130,10 +130,7 @@ function M._load_and_config(plugin)
     if ok then
       opts = result
     else
-      vim.notify(
-        string.format("packard: opts function error for '%s': %s", plugin.name, result),
-        vim.log.levels.ERROR
-      )
+      vim.notify(string.format("packard: opts function error for '%s': %s", plugin.name, result), vim.log.levels.ERROR)
       opts = {}
     end
   end
@@ -716,7 +713,21 @@ function M.setup(opts)
     end
     local source = p[1]
     if source then
-      if p.enabled == false then
+      -- Resolve enabled: boolean (lazy.nvim-compat) or fun():boolean
+      local enabled = p.enabled
+      if type(enabled) == "function" then
+        local ok, result = pcall(enabled)
+        if ok then
+          enabled = result
+        else
+          vim.notify(
+            string.format("packard: error evaluating enabled() for '%s': %s", source, tostring(result)),
+            vim.log.levels.WARN
+          )
+          enabled = true -- errors are non-fatal; plugin remains enabled
+        end
+      end
+      if enabled == false then
         -- Drop disabled spec; also remove existing entry if present
         if seen[source] then
           -- Remove from final_specs
