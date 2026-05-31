@@ -18,7 +18,7 @@ function M.check(ctx)
 
   print("packard: checking for updates...")
 
-  local ok, results = pcall(Fetch.check_all, ctx.plugins, function(curr, total)
+  local ok, err_or_results = pcall(Fetch.check_all, ctx.plugins, function(curr, total)
     if UI.win and vim.api.nvim_win_is_valid(UI.win) then
       UI.set_progress(curr, total, "fetching...")
     end
@@ -33,12 +33,13 @@ function M.check(ctx)
 
   if not ok then
     UI.check_state = "error"
-    UI.check_error_msg = tostring(results)
-    if tostring(results):match("network unreachable") then
+    local err = tostring(err_or_results)
+    UI.check_error_msg = err
+    if err:match("network unreachable") then
       ctx._is_offline = true
       print("packard: skipping update check (offline)")
     else
-      print("packard: check failed: " .. tostring(results))
+      print("packard: check failed: " .. err)
     end
     ctx._is_checking = false
     if UI.win and vim.api.nvim_win_is_valid(UI.win) then
@@ -49,7 +50,7 @@ function M.check(ctx)
 
   ctx._is_offline = false
   local new_count = 0
-  for _, res in ipairs(results) do
+  for _, res in ipairs(err_or_results) do
     if res.success then
       -- Find plugin to get its name (for lockfile check) and min_age
       local plugin

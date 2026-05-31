@@ -1,7 +1,7 @@
 local Git = require("packard.git")
 local Utils = require("packard.utils")
 local Lockfile = require("packard.lockfile")
-local Fetch = {}
+local Semver = require("packard.semver")
 
 ---@class FetchResult
 ---@field owner_repo string
@@ -31,12 +31,15 @@ local function check_force_push(plugin, result)
     )
     :wait()
 
-  -- exit code 0 = ancestor, non-zero = not ancestor (force-push)
-  if fp_check.code ~= 0 then
+  -- exit code 0 = ancestor, 1 = not ancestor (force-push), other = git error
+  if fp_check.code == 1 then
     result.anomaly = true
     result.force_push = true
     result.error =
       string.format("installed commit %s no longer in upstream history (force-push?)", installed_sha:sub(1, 7))
+  elseif fp_check.code ~= 0 then
+    result.anomaly = true
+    result.error = "force-push check failed: " .. (fp_check.stderr or "unknown error")
   end
 end
 
@@ -44,7 +47,7 @@ end
 ---@param plugins NormalizedPlugin[]
 ---@param on_progress function|nil function(current, total)
 ---@return FetchResult[]
-function Fetch.check_all(plugins, on_progress)
+local function check_all(plugins, on_progress)
   if #plugins == 0 then
     return {}
   end
@@ -125,19 +128,7 @@ function Fetch.check_all(plugins, on_progress)
       if plugin.version and tag_jobs[i] then
         local tag_obj = tag_jobs[i]:wait(5000)
         if tag_obj.code == 0 then
-          -- S2: Parse default branch if it was a combined job
-          if not plugin.branch then
-            for line in tag_obj.stdout:gmatch("[^\r\n]+") do
-              local branch = line:match("^ref: refs/heads/(%S+)%s+HEAD$")
-              if branch then
-                resolved_branches[i] = branch
-                break
-              end
-            end
-          end
-
           local tags = Git.parse_ls_remote_tags(tag_obj.stdout)
-          local Semver = require("packard.semver")
           local range = Semver.to_range(plugin.version)
           local best = range and Semver.pick_best(tags, range) or nil
           if best then
@@ -151,7 +142,8 @@ function Fetch.check_all(plugins, on_progress)
           result.error = "git ls-remote --tags failed"
         end
       else
-        result.success = true -- Nothing to do
+        result.error = "internal error: no tag job for version-tracked plugin"
+        result.anomaly = true
       end
     else
       local obj = item.job:wait()
@@ -214,4 +206,6 @@ function Fetch.check_all(plugins, on_progress)
   return results
 end
 
-return Fetch
+return {
+  check_all = check_all,
+}
