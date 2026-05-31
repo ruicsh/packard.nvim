@@ -1,0 +1,321 @@
+---@private
+---Core orchestration: plugin spec merging, init function execution, and the
+---main setup() entrypoint that wires everything together.
+
+local Cooldown = require("packard.cooldown")
+local Loader = require("packard.loader")
+local Parser = require("packard.parser")
+local UI = require("packard.ui")
+
+local M = {}
+
+---@private
+---Merge trigger fields from new_spec into existing_spec (raw spec tables).
+---@param existing table Plugin spec already in final_specs
+---@param new_spec table Duplicate plugin spec to merge triggers from
+function M.merge_spec_triggers(existing, new_spec)
+  local trigger_fields = { "keys", "cmd", "event", "ft" }
+  for _, field in ipairs(trigger_fields) do
+    local a = existing[field]
+    local b = new_spec[field]
+    if a and b then
+      local merged = {}
+      local seen = {}
+      local function add(val)
+        if val == nil then
+          return
+        end
+        if type(val) == "string" then
+          if not seen[val] then
+            seen[val] = true
+            table.insert(merged, val)
+          end
+        elseif type(val) == "table" then
+          local key = vim.inspect(val)
+          if not seen[key] then
+            seen[key] = true
+            table.insert(merged, val)
+          end
+        elseif type(val) == "function" then
+          table.insert(merged, val)
+        end
+      end
+      local function flatten(v)
+        if type(v) == "table" then
+          if v[1] ~= nil then
+            for _, item in ipairs(v) do
+              add(item)
+            end
+          elseif next(v) then
+            add(v)
+          end
+        else
+          add(v)
+        end
+      end
+      flatten(a)
+      flatten(b)
+      existing[field] = merged
+    elseif b then
+      existing[field] = b
+    end
+  end
+end
+
+---@private
+---Execute all plugin init() functions. These run at startup, before any
+---plugin code loads, matching lazy.nvim semantics: init is meant for early
+---vim.g.* / vim.opt.* setup needed by VimScript plugins.
+---@param plugins table List of plugins to process
+function M.run_init_functions(plugins)
+  for _, plugin in ipairs(plugins) do
+    if not plugin._cond and type(plugin.init) == "function" then
+      local ok, err = pcall(plugin.init, plugin)
+      if not ok then
+        vim.notify(
+          string.format("packard: init() error for '%s': %s", plugin.owner_repo, tostring(err)),
+          vim.log.levels.ERROR
+        )
+      end
+    end
+  end
+end
+
+---Initialize packard.nvim
+---@param opts table
+---@param ctx table The packard M table (provides .config, .plugins, ._bootstrap, ._setup_lazy_load, ._register_commands, ._run_init_functions)
+function M.setup(opts, ctx)
+  -- NFR-003: Neovim version guard
+  --[[@diagnostic disable-next-line: undefined-field]]
+  if vim.version.lt(vim.version(), { 0, 12, 0 }) then
+    error("packard requires Neovim >= 0.12")
+  end
+
+  if type(opts) ~= "table" then
+    error(string.format("packard.setup: expected a table, got %s", type(opts)))
+  end
+
+  local plugins = {}
+  local file_specs = {}
+
+  if opts.plugins_dir then
+    if type(opts.plugins_dir) ~= "string" then
+      error("packard.setup: 'plugins_dir' must be a string")
+    end
+    local errors, warnings
+    file_specs, errors, warnings = Loader.scan_all(opts.plugins_dir)
+
+    if #errors > 0 then
+      vim.notify(
+        string.format("packard: %d spec file(s) failed to load:\n%s", #errors, table.concat(errors, "\n")),
+        vim.log.levels.WARN
+      )
+    end
+    if #warnings > 0 then
+      vim.notify(
+        string.format(
+          "packard: %d spec file(s) returned non-table values and were skipped:\n%s",
+          #warnings,
+          table.concat(warnings, "\n")
+        ),
+        vim.log.levels.WARN
+      )
+    end
+  end
+
+  if opts.plugins then
+    if type(opts.plugins) ~= "table" then
+      error("packard.setup: 'plugins' must be a table")
+    end
+    -- Merge: file specs first, then inline
+    -- TODO(FR-039): implement inline-wins dedup — currently Parser raises on duplicate.
+    vim.list_extend(plugins, file_specs)
+    vim.list_extend(plugins, opts.plugins)
+  else
+    plugins = file_specs
+  end
+
+  if #plugins == 0 and not opts.plugins_dir and not opts.plugins then
+    error("packard.setup: at least one of 'plugins' or 'plugins_dir' must be provided")
+  end
+
+  local defaults = opts.defaults or {}
+  if type(defaults) ~= "table" then
+    error("packard.setup: 'defaults' must be a table")
+  end
+
+  if defaults.minimum_release_age ~= nil then
+    if type(defaults.minimum_release_age) ~= "number" or defaults.minimum_release_age < 0 then
+      error("packard.setup: 'defaults.minimum_release_age' must be a non-negative number")
+    end
+  end
+
+  ctx.config = {
+    defaults = defaults,
+    plugins = opts.plugins,
+    plugins_dir = opts.plugins_dir,
+    ai_review = opts.ai_review,
+    highlights = opts.highlights,
+  }
+
+  -- T-1.3.2: Include packard itself if not disabled
+  -- Merge trigger fields (keys, cmd, event, ft) from duplicate specs.
+  -- Non-trigger fields: last occurrence wins (so inline wins over file specs).
+  local final_specs = {}
+  local seen = {}
+
+  for i = 1, #plugins do
+    local p = plugins[i]
+    if type(p) == "string" then
+      p = { p }
+    end
+    local source = p[1]
+    if source then
+      -- Resolve enabled: boolean (lazy.nvim-compat) or fun():boolean
+      local enabled = p.enabled
+      if type(enabled) == "function" then
+        local ok, result = pcall(enabled)
+        if ok then
+          enabled = result
+        else
+          vim.notify(
+            string.format("packard: error evaluating enabled() for '%s': %s", source, tostring(result)),
+            vim.log.levels.WARN
+          )
+          enabled = true -- errors are non-fatal; plugin remains enabled
+        end
+      end
+      if enabled == false then
+        -- Drop disabled spec; also remove existing entry if present
+        if seen[source] then
+          -- Remove from final_specs
+          local idx
+          for j = 1, #final_specs do
+            if final_specs[j][1] == source then
+              idx = j
+              break
+            end
+          end
+          if idx then
+            table.remove(final_specs, idx)
+          end
+          seen[source] = nil
+        end
+      elseif not seen[source] then
+        table.insert(final_specs, p)
+        seen[source] = p
+      else
+        -- Duplicate found: merge trigger fields, override non-trigger fields with later spec
+        local existing = seen[source]
+        M.merge_spec_triggers(existing, p)
+        -- Non-trigger fields: later spec wins (so inline wins over file specs)
+        local non_trigger = {
+          "branch",
+          "version",
+          "tag",
+          "commit",
+          "minimum_release_age",
+          "lazy",
+          "priority",
+          "config",
+          "init",
+          "ai_review",
+          "cond",
+          "build",
+        }
+        for _, field in ipairs(non_trigger) do
+          if p[field] ~= nil then
+            existing[field] = p[field]
+          end
+        end
+        -- opts is deep-merged: all duplicate specs' submodule configs compose together
+        -- (e.g. snacks.picker + snacks.zen both contribute to the final opts table)
+        if p.opts ~= nil then
+          if type(existing.opts) == "table" and type(p.opts) == "table" then
+            existing.opts = vim.tbl_deep_extend("force", existing.opts, p.opts)
+          else
+            -- Non-table opts (e.g. functions): fall back to last-wins
+            existing.opts = p.opts
+          end
+        end
+      end
+    end
+  end
+
+  if opts.self_management ~= false then
+    local found = false
+    for _, p in ipairs(final_specs) do
+      local source = type(p) == "string" and p or p[1]
+      if source:match("ruicsh/packard.nvim") then
+        found = true
+        break
+      end
+    end
+    if not found then
+      table.insert(final_specs, 1, "ruicsh/packard.nvim")
+    end
+  end
+
+  ctx.plugins = Parser.parse_all(final_specs, defaults)
+  if #ctx.plugins == 0 then
+    print("packard: no plugins declared. Add plugins to packard.setup().")
+    return ctx
+  end
+
+  -- Evaluate cond: evaluate once per plugin (matching lazy.nvim's fix_cond() behavior)
+  for _, plugin in ipairs(ctx.plugins) do
+    local cond = plugin.cond
+    if cond == nil then
+      cond = defaults.cond
+    end
+    if type(cond) == "function" then
+      local ok, result = pcall(cond, plugin)
+      if ok then
+        if result == false then
+          plugin._cond = true
+        elseif type(result) == "string" then
+          vim.notify(string.format("packard: %s for '%s'", result, plugin.owner_repo), vim.log.levels.INFO)
+        end
+      else
+        vim.notify(
+          string.format("packard: cond() error for '%s': %s", plugin.owner_repo, tostring(result)),
+          vim.log.levels.WARN
+        )
+      end
+    elseif cond == false then
+      plugin._cond = true
+    end
+    -- nil or true → no _cond flag, plugin loads normally
+  end
+
+  -- Share config with UI
+  UI.config = ctx.config
+
+  -- Run init() functions at startup, before any plugin code loads
+  M.run_init_functions(ctx.plugins)
+
+  ctx._bootstrap()
+  ctx._setup_lazy_load()
+  ctx._register_commands()
+
+  -- T-7.1: Startup notification
+  if opts.notifications ~= false then
+    vim.schedule(function()
+      local status = Cooldown.get_status(ctx.plugins)
+      local count = 0
+      for _ in pairs(status.eligible) do
+        count = count + 1
+      end
+      if count > 0 then
+        vim.notify(
+          string.format("packard: %d plugins eligible for review. Run :Packard review", count),
+          vim.log.levels.INFO
+        )
+      end
+    end)
+  end
+
+  return ctx
+end
+
+return M
