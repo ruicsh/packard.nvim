@@ -48,6 +48,11 @@ function M.expect(actual)
         error(string.format("Expected truthy but got %s", vim.inspect(actual)))
       end
     end,
+    to_be_falsy = function()
+      if actual then
+        error(string.format("Expected falsy but got %s", vim.inspect(actual)))
+      end
+    end,
   }
 end
 

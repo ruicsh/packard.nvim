@@ -121,18 +121,19 @@ Helpers.describe("Lazy Loading", function()
     for _, au in ipairs(autocmds) do
       if au.desc and au.desc:match("packard: load lazybones") then
         bones_found = true
-        -- Trigger it
+        -- Trigger both deferred callbacks to verify neither errors
         au.callback()
       end
       if au.desc and au.desc:match("packard: load filey") then
         filey_found = true
+        au.callback()
       end
     end
     Helpers.expect(bones_found).to_be(true)
     Helpers.expect(filey_found).to_be(true)
 
-    -- Check if it would load (callback calls vim.schedule, so we can't check loaded_plugin immediately
-    -- unless we mock vim.schedule too, but let's at least verify it didn't error)
+    -- Check if it would load (callbacks call vim.schedule, so we can't check loaded_plugin immediately
+    -- unless we mock vim.schedule too, but let's at least verify they didn't error)
 
     -- Cleanup
     packard._load_and_config = original_load
@@ -175,6 +176,69 @@ Helpers.describe("Lazy Loading", function()
 
     -- Cleanup
     pcall(vim.api.nvim_del_augroup_by_name, "packard_load_hybrid")
+  end)
+
+  Helpers.it("handles ModeChanged events with control character notation", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/visual-mode",
+          event = "ModeChanged *:[vV^V]",
+        },
+      },
+    })
+
+    -- Should create ModeChanged autocmd without error
+    local autocmds = vim.api.nvim_get_autocmds({ event = "ModeChanged" })
+    local found = false
+    for _, au in ipairs(autocmds) do
+      if au.desc and au.desc:match("packard: load visual%-mode") then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be(true)
+
+    -- Cleanup
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_visual-mode")
+  end)
+
+  Helpers.it("supports multiple pattern events for the same event name", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/multi-pattern",
+          event = { "ModeChanged *:n", "ModeChanged *:i" },
+        },
+      },
+    })
+
+    local autocmds = vim.api.nvim_get_autocmds({ event = "ModeChanged" })
+    local count = 0
+    for _, au in ipairs(autocmds) do
+      if au.desc and au.desc:match("packard: load multi%-pattern") then
+        count = count + 1
+      end
+    end
+    -- Each separate pattern creates a separate autocmd
+    Helpers.expect(count).to_be(2)
+
+    -- Cleanup
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_multi-pattern")
+  end)
+
+  Helpers.it("preserves negation in patterns after opening bracket", function()
+    local Utils = require("packard.utils")
+
+    -- ^V after [ is negation, not control character
+    local result = Utils.convert_control_chars("[^V]:*")
+    Helpers.expect(result).to_be("[^V]:*")
+
+    -- ^V not after [ should still be converted
+    local result2 = Utils.convert_control_chars("*:[vV^V]")
+    Helpers.expect(result2).to_be("*:[vV\x16]")
   end)
 
   -- Restore mocks

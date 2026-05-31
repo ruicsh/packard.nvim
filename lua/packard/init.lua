@@ -6,6 +6,7 @@ local Cooldown = require("packard.cooldown")
 local Lockfile = require("packard.lockfile")
 local State = require("packard.state")
 local UI = require("packard.ui")
+local Utils = require("packard.utils")
 
 ---@class PackardConfig
 ---@field defaults table
@@ -164,22 +165,32 @@ function M._setup_lazy_load()
 
       -- Filter out pseudo-events like 'VeryLazy' which are not native Neovim events
       local has_deferred = false
-      local real_events = {}
+      local plain_events = {} -- events without a pattern (e.g. "BufReadPost")
+      local event_patterns = {} -- events that have a pattern (event_name -> { pattern, ... })
       --[[@diagnostic disable-next-line: param-type-mismatch]]
       for _, e in ipairs(events) do
         if e == "VeryLazy" or e == "LazyFile" then
           has_deferred = true
         else
-          table.insert(real_events, e)
+          -- Parse event string: "EventName pattern" or just "EventName"
+          --[[@diagnostic disable-next-line: param-type-mismatch]]
+          local event_name, pattern = e:match("^(%S+)%s+(.+)$")
+          if event_name then
+            -- Event has a pattern; store as a list to support multiple patterns for the same event
+            event_patterns[event_name] = event_patterns[event_name] or {}
+            table.insert(event_patterns[event_name], (Utils.convert_control_chars(pattern)))
+          else
+            table.insert(plain_events, e)
+          end
         end
       end
 
-      if #real_events > 0 or has_deferred then
+      if #plain_events > 0 or next(event_patterns) or has_deferred then
         local group = vim.api.nvim_create_augroup("packard_load_" .. plugin.name, { clear = true })
 
-        if #real_events > 0 then
+        if #plain_events > 0 then
           --[[@diagnostic disable-next-line: param-type-mismatch]]
-          vim.api.nvim_create_autocmd(real_events, {
+          vim.api.nvim_create_autocmd(plain_events, {
             group = group,
             once = true,
             callback = function()
@@ -187,6 +198,21 @@ function M._setup_lazy_load()
             end,
             desc = string.format("packard: load %s", plugin.name),
           })
+        end
+
+        -- Create separate autocmds for events with patterns
+        for ev, pats in pairs(event_patterns) do
+          for _, pat in ipairs(pats) do
+            vim.api.nvim_create_autocmd(ev, {
+              group = group,
+              pattern = pat,
+              once = true,
+              callback = function()
+                M._load_and_config(plugin)
+              end,
+              desc = string.format("packard: load %s", plugin.name),
+            })
+          end
         end
 
         if has_deferred then
