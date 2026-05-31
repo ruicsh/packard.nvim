@@ -770,7 +770,7 @@ function M.setup(opts)
     -- Merge: file specs first, then inline
     -- Deduplication happens by owner_repo later in Parser.parse_all
     -- but we want to ensure inline wins on duplicates if we did it here.
-    -- Actually Parser.parse_all raises error on duplicate.
+    -- Actually Parser.parse_all (lua/packard/parser/init.lua) raises error on duplicate.
     -- SPEC FR-039 says "inline wins. No duplicate error is raised."
     -- So we need to handle deduplication here or modify Parser.
     vim.list_extend(plugins, file_specs)
