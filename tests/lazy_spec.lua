@@ -645,6 +645,101 @@ Helpers.describe("Lazy Loading", function()
     package.loaded["auto-setup-mod"] = nil
   end)
 
+  Helpers.it("resolves function opts to table before calling setup()", function()
+    local setup_opts = nil
+    package.loaded["func-opts-mod"] = {
+      setup = function(opts)
+        setup_opts = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/func-opts-mod",
+          opts = function()
+            return { enabled = true, picker = { layout = "default" } }
+          end,
+        },
+      },
+    })
+
+    -- setup() should have been called with the resolved table, not the function
+    Helpers.expect(setup_opts).to_be_truthy()
+    Helpers.expect(type(setup_opts)).to_be("table")
+    Helpers.expect(setup_opts.enabled).to_be(true)
+    Helpers.expect(setup_opts.picker.layout).to_be("default")
+
+    package.loaded["func-opts-mod"] = nil
+  end)
+
+  Helpers.it("handles opts function errors gracefully", function()
+    local setup_opts = nil
+    package.loaded["error-opts-mod"] = {
+      setup = function(opts)
+        setup_opts = opts
+      end,
+    }
+
+    local notified = nil
+    local original_notify = vim.notify
+    vim.notify = function(msg, level)
+      notified = msg
+    end
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "bar/error-opts-mod",
+          opts = function()
+            error("opts function failed")
+          end,
+        },
+      },
+    })
+
+    -- Should have notified about the error
+    Helpers.expect(notified).to_be_truthy()
+    Helpers.expect(notified:match("opts function error")).to_be_truthy()
+    -- setup() should still be called with empty opts (graceful degradation)
+    Helpers.expect(setup_opts).to_be_truthy()
+    Helpers.expect(type(setup_opts)).to_be("table")
+    -- Verify opts is empty (next() returns nil for empty tables)
+    Helpers.expect(next(setup_opts)).to_be(nil)
+
+    package.loaded["error-opts-mod"] = nil
+    vim.notify = original_notify
+  end)
+
+  Helpers.it("resolves function opts before passing to config()", function()
+    local config_opts = nil
+    package.loaded["func-opts-config-mod"] = {}
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "baz/func-opts-config-mod",
+          opts = function()
+            return { val = 42 }
+          end,
+          config = function(_, opts)
+            config_opts = opts
+          end,
+        },
+      },
+    })
+
+    -- config() should have been called with the resolved table
+    Helpers.expect(config_opts).to_be_truthy()
+    Helpers.expect(type(config_opts)).to_be("table")
+    Helpers.expect(config_opts.val).to_be(42)
+
+    package.loaded["func-opts-config-mod"] = nil
+  end)
+
   Helpers.it("strips .nvim suffix when resolving module for auto-config", function()
     local setup_called_with = nil
     -- Plugin name will be "snacks.nvim" (from "folke/snacks.nvim"), auto-config should require "snacks"

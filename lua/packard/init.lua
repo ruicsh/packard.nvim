@@ -89,15 +89,27 @@ function M._load_and_config(plugin)
   -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
   pcall(vim.cmd.packadd, plugin.name)
 
+  -- Resolve opts: lazy.nvim convention — opts can be a function returning a table
+  local opts = plugin.opts
+  if type(opts) == "function" then
+    local ok, result = pcall(opts)
+    if ok then
+      opts = result
+    else
+      vim.notify(
+        string.format("packard: opts function error for '%s': %s", plugin.name, result),
+        vim.log.levels.ERROR
+      )
+      opts = {}
+    end
+  end
+
   -- Run config function if defined
   if plugin.config then
-    local opts = plugin.opts or {}
-    -- If it's a string, we might want to try requiring it as a module
-    -- but for now we follow lazy.nvim pattern where config is a function
     if type(plugin.config) == "function" then
-      plugin.config(plugin, opts)
+      plugin.config(plugin, opts or {})
     end
-  elseif plugin.opts then
+  elseif opts ~= nil then
     -- Auto-config: lazy.nvim convention — opts implies require("plugin").setup(opts)
     local modname = plugin.name:gsub("%.nvim$", "")
     local ok, mod = pcall(require, modname)
@@ -105,7 +117,7 @@ function M._load_and_config(plugin)
       ok, mod = pcall(require, plugin.name)
     end
     if ok and type(mod) == "table" and type(mod.setup) == "function" then
-      mod.setup(plugin.opts)
+      mod.setup(opts)
     end
   end
 end
