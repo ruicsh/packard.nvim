@@ -30,13 +30,11 @@ function Build._execute_one(plugin, plugin_path, build_item)
   elseif type(build_item) == "string" then
     if build_item:sub(1, 1) == ":" then
       -- Neovim command (e.g., ":TSUpdate")
-      --[[@diagnostic disable-next-line: undefined-doc-name]]
-      local cmd = vim.api.nvim_parse_cmd(build_item:sub(2), {})
-      local ok, result = pcall(vim.api.nvim_cmd, cmd, { output = true })
+      local ok, result = pcall(vim.cmd, build_item:sub(2))
       if not ok then
         return false, tostring(result)
       end
-      return true, result
+      return true
     elseif build_item:match("%.lua$") then
       -- Lua file in the plugin directory (e.g., "build.lua")
       local filepath = plugin_path .. "/" .. build_item
@@ -74,7 +72,7 @@ end
 ---
 ---Build types supported (matching lazy.nvim):
 ---  - `fun(plugin)`: Lua function called with the plugin table
----  - `":Command"`: Neovim command executed via nvim_cmd
+---  - `":Command"`: Neovim command executed via vim.cmd
 ---  - `"*.lua"`: Lua file loaded from the plugin directory
 ---  - any other string: shell command run via vim.system
 ---  - list of any of the above: run sequentially
@@ -104,6 +102,15 @@ function Build.run(plugin, opts)
   -- `build = false` means explicitly skip, even if build.lua exists
   if builders == false then
     return true
+  end
+
+  -- Load the plugin so its commands (e.g., TSUpdate) are available for build steps
+  local ok_pack, pack_err = pcall(vim.cmd.packadd, plugin.name)
+  if not ok_pack then
+    vim.notify(
+      string.format("packard: could not load plugin '%s' for build: %s", plugin.owner_repo, tostring(pack_err)),
+      vim.log.levels.DEBUG
+    )
   end
 
   -- Auto-detect build files if no explicit build field

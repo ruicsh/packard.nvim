@@ -192,7 +192,7 @@ Packard supports post-install and post-update build steps, matching lazy.nvim co
 | Type | Example | Description |
 |---|---|---|
 | `fun(plugin)` | `build = function(p) ... end` | Lua function called with the plugin table |
-| `":Command"` | `build = ":TSUpdate"` | Neovim command executed via `nvim_cmd` |
+| `":Command"` | `build = ":TSUpdate"` | Neovim command executed via `vim.cmd` |
 | `"*.lua"` | `build = "build.lua"` | Lua file loaded from the plugin directory |
 | Shell command | `build = "make"` | Run via `vim.system()` in the plugin directory |
 | List | `build = { "make", ":TSUpdate" }` | Multiple steps run sequentially |
