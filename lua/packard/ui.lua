@@ -459,158 +459,124 @@ function UI.apply_highlights(lines)
           hl_group = "PackardH2",
         })
       end
-    elseif line:match("^    │") or line:match("^    ╭") or line:match("^    ╰") then
-      -- Expansion Highlights
-      local line_len = #line
-      local west_col = 4
-      local west_end = 7
-      local east_col = line_len - 3
-      local east_end = line_len
+    elseif line:match("^    AI Review") or line:match("^    Commit Log") then
+      -- Expansion headers: bold
+      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 4, {
+        end_col = #line,
+        hl_group = "PackardH1",
+      })
+    elseif line:match("^    %s*%S") and not line:match("^    [●⚠⏳☒☐]") then
+      -- Expansion content (non-plugin-row 4-space indent lines)
+      local label_col = 4 -- 0-indexed byte offset of content after indent
 
-      -- 1. Structural Highlights (West/East Corners/Bars)
-      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, west_col, { end_col = west_end, hl_group = "PackardAIBorder" })
-      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, east_col, { end_col = east_end, hl_group = "PackardAIBorder" })
-
-      if line:match("╭") then
-        -- North: Horizontal lines + Title isolation
-        local titles = { " AI Review ", " Commit Log " }
-        local found_title = false
-        for _, title_text in ipairs(titles) do
-          local title_pos = line:find(title_text, 1, true)
-          if title_pos then
-            found_title = true
-            local left_start = west_end
-            local left_end = title_pos - 1
-            local right_start = title_pos - 1 + #title_text
-            local right_end = east_col
-            if left_end > left_start then
-              vim.api.nvim_buf_set_extmark(
-                buf,
-                ns,
-                i - 1,
-                left_start,
-                { end_col = left_end, hl_group = "PackardAIBorder" }
-              )
-            end
-            if right_end > right_start then
-              vim.api.nvim_buf_set_extmark(
-                buf,
-                ns,
-                i - 1,
-                right_start,
-                { end_col = right_end, hl_group = "PackardAIBorder" }
-              )
-            end
-            -- Title: bold
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, title_pos - 1, {
-              end_col = title_pos - 1 + #title_text,
-              hl_group = "PackardH1",
-            })
-            break
+      -- 1. Labels (Risk:, Summary:, Reasoning:)
+      local labels = { "Summary:", "Risk:", "Reasoning:" }
+      local found_label = false
+      for _, label_text in ipairs(labels) do
+        if line:match("^    " .. label_text) then
+          found_label = true
+          -- Label
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, label_col, {
+            end_col = label_col + #label_text,
+            hl_group = "PackardH2",
+          })
+          -- Value (skip spaces after label)
+          local value_start_col = label_col + #label_text
+          while value_start_col < #line and line:sub(value_start_col + 1, value_start_col + 1) == " " do
+            value_start_col = value_start_col + 1
           end
-        end
-        if not found_title then
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, west_end, { end_col = east_col, hl_group = "PackardAIBorder" })
-        end
-      elseif line:match("╰") then
-        -- South: Full horizontal line
-        vim.api.nvim_buf_set_extmark(buf, ns, i - 1, west_end, { end_col = east_col, hl_group = "PackardAIBorder" })
-      else
-        -- Vertical (│): Content highlights
-        local content = line:sub(9, -3) -- Strip padding
-
-        -- 1. Labels vs Values (AI Review)
-        local labels = { "Summary:", "Risk:", "Reasoning:", "Error:" }
-        local found_label = false
-        for _, label in ipairs(labels) do
-          local label_pos = line:find(label, 8, true)
-          if label_pos == 9 then
-            found_label = true
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, {
-              end_col = 8 + #label,
-              hl_group = "PackardH2",
-            })
-            -- Value part
-            local value_start = 8 + #label
-            while value_start < east_col and line:sub(value_start + 1, value_start + 1) == " " do
-              value_start = value_start + 1
-            end
-            if value_start < east_col then
-              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, value_start, {
-                end_col = east_col,
-                hl_group = "PackardAIValue",
-              })
-            end
-            break
-          end
-        end
-
-        -- 2. Commit log (starts with SHA)
-        if not found_label then
-          if content:match("^%x%x%x%x%x%x%x") then
-            -- Commit hash
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, {
-              end_col = 15,
-              hl_group = "PackardCommitHash",
-            })
-            -- Message
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 16, {
-              end_col = east_col,
+          if value_start_col < #line then
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, value_start_col, {
+              end_col = #line,
               hl_group = "PackardAIValue",
             })
-          elseif content:match("No new commits") then
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, {
-              end_col = 8 + #"No new commits",
-              hl_group = "PackardStatusWarn",
-            })
-          elseif not found_label then
-            -- Continuation lines or other values
-            local content_start = line:find("%S", 9)
-            if content_start and content_start < east_col then
-              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, content_start - 1, {
-                end_col = east_col,
-                hl_group = "PackardAIValue",
-              })
-            end
           end
+          break
         end
+      end
 
-        -- AI specific highlights
-        if line:match("AI review in progress") then
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 8, { end_col = 11, hl_group = "PackardStatusWarn" })
-        elseif content:match("%[R%] Re%-run") then
-          local pos_in_content = content:find("[R] Re-run", 1, true)
-          local pos_in_line = 8 + pos_in_content
+      -- 2. No new commits
+      if not found_label then
+        local no_new = line:find("No new commits", 5, true)
+        if no_new then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, no_new - 1, {
+            end_col = no_new - 1 + #"No new commits",
+            hl_group = "PackardStatusWarn",
+          })
+        -- 3. Commit log line (starts with hex hash after 4-space indent)
+        elseif line:match("^    %x%x%x%x%x%x%x") then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, label_col, {
+            end_col = label_col + 7,
+            hl_group = "PackardCommitHash",
+          })
+          -- Message
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, label_col + 8, {
+            end_col = #line,
+            hl_group = "PackardAIValue",
+          })
+        -- 4. AI review in progress
+        elseif line:match("AI review in progress") then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, label_col, {
+            end_col = #line,
+            hl_group = "PackardStatusWarn",
+          })
+        -- 5. [R] Re-run button
+        elseif line:find("[R] Re-run", 5, true) then
+          local pos_in_line = line:find("[R] Re-run", 5, true)
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, pos_in_line - 1, {
             end_col = pos_in_line - 1 + #"[R] Re-run",
             hl_group = "PackardButton",
           })
-        end
-
-        -- [A] Re-run highlight (legacy or if we use A for Re-run)
-        if content:find("[A] Re-run", 1, true) then
-          local pos_in_content = content:find("[A] Re-run", 1, true)
-          local pos_in_line = 8 + pos_in_content
+        -- 6. [A] Re-run legacy
+        elseif line:find("[A] Re-run", 5, true) then
+          local pos_in_line = line:find("[A] Re-run", 5, true)
           vim.api.nvim_buf_set_extmark(buf, ns, i - 1, pos_in_line - 1, {
             end_col = pos_in_line - 1 + #"[A] Re-run",
             hl_group = "PackardButton",
           })
+        -- 7. Error message line
+        elseif line:match("^    Error:") then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, label_col, {
+            end_col = label_col + 6,
+            hl_group = "PackardH2",
+          })
+          -- Error value
+          local value_start = label_col + 6
+          while value_start < #line and line:sub(value_start + 1, value_start + 1) == " " do
+            value_start = value_start + 1
+          end
+          if value_start < #line then
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, value_start, {
+              end_col = #line,
+              hl_group = "PackardStatusWarn",
+            })
+          end
+        -- 8. Continuation lines (wrapped text, no label, 4-space indent)
+        else
+          local content_start = line:find("%S", 5)
+          if content_start then
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, content_start - 1, {
+              end_col = #line,
+              hl_group = "PackardAIValue",
+            })
+          end
         end
+      end
 
-        -- Risk value color overrides
-        if content:match("^Risk:") then
-          local risk = content:match("^Risk:%s+(%w+)")
-          if risk then
-            local r_start_in_line = line:find(risk, 13, true)
-            if r_start_in_line then
-              local hl = (risk == "high" and "PackardAIRiskHigh")
-                or (risk == "medium" and "PackardAIRiskMedium")
-                or "PackardAIRiskLow"
-              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, r_start_in_line - 1, {
-                end_col = r_start_in_line - 1 + #risk,
-                hl_group = hl,
-              })
-            end
+      -- Risk value color overrides (only on Risk: lines)
+      if found_label and line:match("^    Risk:") then
+        local risk = line:match("^    Risk:%s+(%w+)")
+        if risk then
+          local r_start_in_line = line:find(risk, nil, true)
+          if r_start_in_line then
+            local hl = (risk == "high" and "PackardAIRiskHigh")
+              or (risk == "medium" and "PackardAIRiskMedium")
+              or "PackardAIRiskLow"
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, r_start_in_line - 1, {
+              end_col = r_start_in_line - 1 + #risk,
+              hl_group = hl,
+              priority = 200,
+            })
           end
         end
       end
@@ -634,9 +600,8 @@ function UI.apply_highlights(lines)
         -- 2. Plugin Name
         local name_start = 4 + icon_len + 1
         -- Use a pattern to find the first double-space or multiple spaces that separate name from commit
-        local name_end = line:find("  ", name_start) or (#line + 1)
-        if name_end then
-          local owner_repo = UI.line_map[i]
+        local name_end = line:find("  ", name_start) or #line
+        local owner_repo = UI.line_map[i]
           local is_selected = (owner_repo and owner_repo == UI._cursor_repo)
           local hl_name = is_selected and "PackardPluginNameSelected" or "PackardPluginName"
 
@@ -658,7 +623,7 @@ function UI.apply_highlights(lines)
           -- 3. Commit (find next word)
           local commit_start = line:find("%w", name_end)
           if commit_start then
-            local commit_end = line:find(" ", commit_start)
+            local commit_end = line:find(" ", commit_start) or (commit_start + 7)
             vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start - 1, {
               end_col = commit_end,
               hl_group = "PackardCommitHash",
@@ -699,7 +664,6 @@ function UI.apply_highlights(lines)
       end
     end
   end
-end
 
 function UI.render_installed(lines)
   local grouped = {
@@ -905,40 +869,29 @@ end
 function UI._render_ai_expansion(lines, owner_repo)
   local result = UI.ai_results[owner_repo]
   local win_width = vim.api.nvim_win_get_width(UI.win)
-  local width = math.min(win_width - 8, 72)
-  local inner_width = width - 4 -- Account for "│ " and " │"
+  local width = win_width - 4
 
   local function add_line(content)
     local display_width = vim.fn.strdisplaywidth(content)
-    local padding = inner_width - display_width
-    if padding < 0 then
-      padding = 0
+    if display_width > width then
+      content = vim.fn.strcharpart(content, 0, width - 3) .. "..."
     end
-    table.insert(lines, "    │ " .. content .. string.rep(" ", padding) .. " │")
+    table.insert(lines, "    " .. content)
   end
 
-  local title = " AI Review "
-  local total_border_cols = width - 2
-  local title_cols = vim.fn.strdisplaywidth(title)
-  local left_cols = 1
-  local right_cols = total_border_cols - title_cols - left_cols
-  if right_cols < 0 then
-    right_cols = 0
-  end
-  local border_content = string.rep("─", left_cols) .. title .. string.rep("─", right_cols)
-  table.insert(lines, "    ╭" .. border_content .. "╮")
+  add_line("AI Review")
 
   if not result or result.state == "loading" then
     local spinner = UI.spinner_frames[UI.spinner_idx]
     add_line(spinner .. " AI review in progress...")
   elseif result.state == "error" then
-    add_line("Error: " .. result.data:sub(1, inner_width - 7))
+    add_line("Error: " .. tostring(result.data or ""))
   elseif result.state == "result" then
     local data = result.data
     add_line("Risk:      " .. data.risk)
 
     -- Wrap summary
-    local wrap_width = inner_width - 11
+    local wrap_width = width - 11
     local summary_lines = UI._wrap_text(data.summary, wrap_width)
     for i, l in ipairs(summary_lines) do
       local prefix = i == 1 and "Summary:   " or "           "
@@ -954,8 +907,6 @@ function UI._render_ai_expansion(lines, owner_repo)
     add_line("")
     add_line("[R] Re-run")
   end
-
-  table.insert(lines, "    ╰" .. string.rep("─", total_border_cols) .. "╯")
 end
 
 UI._log_cache = {} -- Map owner_repo -> log_lines
@@ -967,31 +918,17 @@ function UI._render_log_expansion(lines, owner_repo)
   end
 
   local win_width = vim.api.nvim_win_get_width(UI.win)
-  local width = math.min(win_width - 8, 80)
-  local inner_width = width - 4
+  local width = win_width - 4
 
-  local title = " Commit Log "
-  local total_border_cols = width - 2
-  local title_cols = vim.fn.strdisplaywidth(title)
-  local left_cols = 1
-  local right_cols = total_border_cols - title_cols - left_cols
-  if right_cols < 0 then
-    right_cols = 0
-  end
-  local border_content = string.rep("─", left_cols) .. title .. string.rep("─", right_cols)
-  table.insert(lines, "    ╭" .. border_content .. "╮")
+  table.insert(lines, "    Commit Log")
 
   for _, l in ipairs(log_lines) do
     local display_width = vim.fn.strdisplaywidth(l)
-    local padding = inner_width - display_width
-    if padding < 0 then
-      l = l:sub(1, inner_width - 3) .. "..."
-      padding = 0
+    if display_width > width then
+      l = vim.fn.strcharpart(l, 0, width - 3) .. "..."
     end
-    table.insert(lines, "    │ " .. l .. string.rep(" ", padding) .. " │")
+    table.insert(lines, "    " .. l)
   end
-
-  table.insert(lines, "    ╰" .. string.rep("─", total_border_cols) .. "╯")
 end
 
 function UI._wrap_text(text, max_len)
