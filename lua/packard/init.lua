@@ -160,9 +160,11 @@ function M._setup_lazy_load()
             mode = "n"
           elseif type(key) == "table" then
             -- lazy.nvim key format: { [mode?], lhs, [rhs], ... }
-            -- Detect if first element is a mode string (valid mode chars only)
+            -- Detect if first element is a mode string (valid mode chars only).
+            -- Also require key[2] to be a string — otherwise it's { lhs, rhs, ... }
+            -- format where lhs happens to be a single char like "n" or "v".
             local first = key[1]
-            if type(first) == "string" and first:match("^[nivxsotc]+$") then
+            if type(first) == "string" and first:match("^[nivxsotc]+$") and type(key[2]) == "string" then
               mode = first
               lhs = key[2]
               rhs = key[3]

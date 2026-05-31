@@ -391,6 +391,79 @@ Helpers.describe("Lazy Loading", function()
     Helpers.expect(ok2).to_be(true)
   end)
 
+  Helpers.it("single-char key 'n' with function rhs uses lhs='n', not mode", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/single-char",
+          keys = {
+            { "n", function() end, desc = "Next result" },
+          },
+        },
+      },
+    })
+
+    -- Stub should be mapped for key "n" in normal mode, not treated as mode
+    local ok = pcall(vim.keymap.del, "n", "n")
+    Helpers.expect(ok).to_be(true)
+  end)
+
+  Helpers.it("single-char key 'v' with function rhs uses lhs='v', not mode", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/single-char-v",
+          keys = {
+            { "v", function() end, desc = "Visual action" },
+          },
+        },
+      },
+    })
+
+    -- Default mode is "n" since no explicit mode was set in the key spec.
+    -- This test only verifies the regression fix ("v" is treated as lhs, not mode).
+    local ok = pcall(vim.keymap.del, "n", "v")
+    Helpers.expect(ok).to_be(true)
+  end)
+
+  Helpers.it("mode-prefixed { mode, lhs, rhs } format still works", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/mode-prefix",
+          keys = {
+            { "n", "<leader>mp", function() end, desc = "Mode prefix" },
+          },
+        },
+      },
+    })
+
+    local ok = pcall(vim.keymap.del, "n", "<leader>mp")
+    Helpers.expect(ok).to_be(true)
+  end)
+
+  Helpers.it("single-element { \"n\" } creates stub for key \"n\" in default mode", function()
+    -- key[2] is nil, so the mode-detection guard falls through to the else branch,
+    -- treating key[1] as lhs and defaulting mode to "n".
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/single-elem",
+          keys = {
+            { "n" },
+          },
+        },
+      },
+    })
+
+    local ok = pcall(vim.keymap.del, "n", "n")
+    Helpers.expect(ok).to_be(true)
+  end)
+
   Helpers.it("merges cmd from duplicate specs", function()
     packard.setup({
       self_management = false,
