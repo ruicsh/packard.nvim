@@ -72,9 +72,10 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 | `event` | `string\|string[]` | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`. |
 | `ft` | `string\|string[]` | Load on filetype(s). |
 | `lazy` | `boolean` | If `false`, load immediately on startup (default: `true`). |
-| `config` | `function\|boolean` | Function called after plugin loads: `function(plugin, opts)`. Set to `true` to auto-call `require("plugin").setup(opts or {})` — useful for zero-config plugins. If omitted but `opts` is present, Packard auto-calls `require("plugin").setup(opts)`. |
+| `config` | `function\|boolean` | Function called after plugin loads: `function(plugin, opts)`. Set to `true` to auto-call `require(MAIN).setup(opts or {})` — useful for zero-config plugins. If omitted but `opts` is present, Packard auto-calls `require(MAIN).setup(opts)`. |
+| `main` | `string` | Override the auto-detected Lua module name used by `config` and `opts` auto-setup. Useful when the plugin's module name doesn't match the repo name. |
 | `init` | `function` | Function called at **startup** before the plugin loads: `function(plugin)`. Useful for setting `vim.g.*` values that VimScript plugins check at startup. Runs for all plugins regardless of `lazy` setting. |
-| `opts` | `table` | Options passed to the `config` function. If `config` is absent but `opts` is present, auto-invokes `require("plugin").setup(opts)`. |
+| `opts` | `table` or `function` | Options passed to the `config` function. If `config` is absent but `opts` is present, auto-invokes `require(MAIN).setup(opts)`. Can also be a function returning a table. |
 
 Example:
 ```lua
@@ -127,6 +128,18 @@ This is equivalent to:
 ```
 
 `config = true` always calls `setup()`, even without `opts`. If you also provide `opts`, they are passed to `setup(opts)`.
+
+If the module name cannot be auto-detected (e.g., the repo name doesn't match the Lua module), use `main` to specify it explicitly:
+
+```lua
+{
+  "some-org/plugin-with-unusual-name",
+  main = "actual-module-name",  -- override: require("actual-module-name").setup(opts)
+  opts = {
+    setting = "value",
+  },
+}
+```
 
 `init` runs at startup before the plugin loads — useful for early `vim.g.*` setup:
 

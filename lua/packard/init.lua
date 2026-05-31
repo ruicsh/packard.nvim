@@ -146,9 +146,9 @@ function M._load_and_config(plugin)
     -- Auto-config: lazy.nvim convention
     --   config = true → always calls require(MAIN).setup(opts or {})
     --   opts present + no config → calls require(MAIN).setup(opts or {})
-    local modname = plugin.name:gsub("%.nvim$", "")
+    local modname = plugin.main or plugin.name:gsub("%.nvim$", "")
     local ok, mod = pcall(require, modname)
-    if not ok and modname ~= plugin.name then
+    if not ok and not plugin.main and modname ~= plugin.name then
       ok, mod = pcall(require, plugin.name)
     end
     if ok and type(mod) == "table" and type(mod.setup) == "function" then

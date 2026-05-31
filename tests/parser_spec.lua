@@ -160,6 +160,15 @@ local function test_errors()
   assert_error(function()
     packard.setup({ self_management = false, plugins = { { "a/b", init = "not a function" } } })
   end, "must be a function")
+
+  -- Invalid main type
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { "a/b", main = true } } })
+  end, "must be a string")
+
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { "a/b", main = 42 } } })
+  end, "must be a string")
 end
 
 local function test_dependencies()
@@ -310,6 +319,31 @@ local function test_complex_dependencies()
   assert(packard.plugins[5].owner_repo == "user/main")
 end
 
+local function test_main_field()
+  print("Testing main field...")
+
+  -- 1. main field is extracted and stored
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { "owner/repo-a", main = "custom.module" },
+      { "owner/repo-b" },
+    },
+  })
+
+  local a, b
+  for _, p in ipairs(packard.plugins) do
+    if p.owner_repo == "owner/repo-a" then
+      a = p
+    elseif p.owner_repo == "owner/repo-b" then
+      b = p
+    end
+  end
+
+  assert(a.main == "custom.module", "main field should be stored as provided")
+  assert(b.main == nil, "main field should be nil when not specified")
+end
+
 local function test_version_fields()
   print("Testing version fields...")
 
@@ -370,6 +404,7 @@ test_config_true()
 test_errors()
 test_dependencies()
 test_complex_dependencies()
+test_main_field()
 test_version_fields()
 
 print("Parser tests passed!")

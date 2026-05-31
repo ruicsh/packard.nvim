@@ -1472,6 +1472,116 @@ Helpers.describe("Lazy Loading", function()
     package.loaded["config-true-stripped"] = nil
   end)
 
+  -- main field tests
+
+  Helpers.it("main field overrides module name for opts-based auto-config", function()
+    local setup_called_with = nil
+    package.loaded["custom-main-mod"] = {
+      setup = function(opts)
+        setup_called_with = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/weird-plugin-name",
+          main = "custom-main-mod",
+          opts = { enabled = true },
+        },
+      },
+    })
+
+    -- setup() should have been called on the module specified by main, not on "weird-plugin-name"
+    Helpers.expect(setup_called_with).to_be_truthy()
+    Helpers.expect(setup_called_with.enabled).to_be(true)
+
+    package.loaded["custom-main-mod"] = nil
+  end)
+
+  Helpers.it("main field overrides module name for config=true auto-config", function()
+    local setup_called_with = nil
+    package.loaded["config-true-main"] = {
+      setup = function(opts)
+        setup_called_with = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "bar/other-weird-name",
+          main = "config-true-main",
+          config = true,
+          opts = { value = 42 },
+        },
+      },
+    })
+
+    Helpers.expect(setup_called_with).to_be_truthy()
+    Helpers.expect(setup_called_with.value).to_be(42)
+
+    package.loaded["config-true-main"] = nil
+  end)
+
+  Helpers.it("main field supports submodule paths", function()
+    local setup_called_with = nil
+    -- Lua require() for "submodule.feature" expects package.loaded["submodule.feature"]
+    package.loaded["submodule.feature"] = {
+      setup = function(opts)
+        setup_called_with = opts
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "baz/some-plugin",
+          main = "submodule.feature",
+          opts = { test = true },
+        },
+      },
+    })
+
+    Helpers.expect(setup_called_with).to_be_truthy()
+    Helpers.expect(setup_called_with.test).to_be(true)
+
+    package.loaded["submodule.feature"] = nil
+  end)
+
+  Helpers.it("explicit config takes priority over main field", function()
+    local config_called = false
+    local auto_setup_called = false
+
+    package.loaded["override-main-mod"] = {
+      setup = function()
+        auto_setup_called = true
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "qux/priority-test",
+          main = "override-main-mod",
+          opts = { val = 1 },
+          config = function(_, opts)
+            config_called = true
+          end,
+        },
+      },
+    })
+
+    Helpers.expect(config_called).to_be(true)
+    Helpers.expect(auto_setup_called).to_be(false)
+
+    package.loaded["override-main-mod"] = nil
+  end)
+
   -- init() tests
 
   Helpers.it("calls init() during setup before plugin loads", function()
