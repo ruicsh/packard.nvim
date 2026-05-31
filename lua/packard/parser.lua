@@ -12,6 +12,7 @@ local Parser = {}
 ---@field lazy boolean
 ---@field priority number|nil
 ---@field config function|nil
+---@field init function|nil
 ---@field opts table|nil
 ---@field event string|string[]|table|nil
 ---@field cmd string|string[]|table|nil
@@ -127,6 +128,14 @@ function Parser.parse_all(plugins, defaults)
       end
     end
 
+    -- Validate config and init are functions if provided
+    if spec.config and type(spec.config) ~= "function" then
+      error(string.format("packard: 'config' for '%s' must be a function", owner_repo))
+    end
+    if spec.init and type(spec.init) ~= "function" then
+      error(string.format("packard: 'init' for '%s' must be a function", owner_repo))
+    end
+
     -- Normalize dependencies to canonical owner/repo strings
     local deps
     if spec.dependencies then
@@ -164,6 +173,7 @@ function Parser.parse_all(plugins, defaults)
       lazy = lazy,
       priority = spec.priority,
       config = spec.config,
+      init = spec.init,
       opts = spec.opts,
       event = spec.event,
       cmd = spec.cmd,

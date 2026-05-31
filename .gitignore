@@ -16,3 +16,4 @@ test_live.lua
 # Design docs (excluded from VCS)
 REQUIREMENTS.md
 SPEC.md
+COMPARISON.md

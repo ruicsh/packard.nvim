@@ -79,6 +79,7 @@ end
 local function test_lazy_load_fields()
   print("Testing lazy load fields...")
   local config_fn = function() end
+  local init_fn = function() end
   packard.setup({
     self_management = false,
     plugins = {
@@ -91,6 +92,7 @@ local function test_lazy_load_fields()
         keys = "<leader>x",
         ft = { "lua", "python" },
         config = config_fn,
+        init = init_fn,
         opts = { x = 1 },
       },
     },
@@ -104,6 +106,7 @@ local function test_lazy_load_fields()
   assert(p.keys == "<leader>x")
   assert(type(p.ft) == "table" and p.ft[1] == "lua")
   assert(p.config == config_fn)
+  assert(p.init == init_fn)
   assert(p.opts.x == 1)
 end
 
@@ -129,6 +132,16 @@ local function test_errors()
   assert_error(function()
     packard.setup({ self_management = false, plugins = { { "a/b", minimum_release_age = -5 } } })
   end, "must be a number")
+
+  -- Invalid config type
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { "a/b", config = "not a function" } } })
+  end, "must be a function")
+
+  -- Invalid init type
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { "a/b", init = "not a function" } } })
+  end, "must be a function")
 end
 
 local function test_dependencies()

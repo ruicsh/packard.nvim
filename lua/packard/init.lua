@@ -79,6 +79,26 @@ function M._merge_spec_triggers(existing, new_spec)
 end
 
 ---@private
+---Execute all plugin init() functions. These run at startup, before any
+---plugin code loads, matching lazy.nvim semantics: init is meant for early
+---vim.g.* / vim.opt.* setup needed by VimScript plugins.
+---@param plugins table|nil Optional list of plugins to process (defaults to M.plugins)
+function M._run_init_functions(plugins)
+  plugins = plugins or M.plugins
+  for _, plugin in ipairs(plugins) do
+    if type(plugin.init) == "function" then
+      local ok, err = pcall(plugin.init, plugin)
+      if not ok then
+        vim.notify(
+          string.format("packard: init() error for '%s': %s", plugin.owner_repo, tostring(err)),
+          vim.log.levels.ERROR
+        )
+      end
+    end
+  end
+end
+
+---@private
 function M._load_and_config(plugin)
   if package.loaded["packard.plugins." .. plugin.name] then
     return
@@ -499,6 +519,11 @@ function M._bootstrap()
   if #new_deps > 0 then
     -- Add to tracked plugins for future update checks
     vim.list_extend(M.plugins, new_deps)
+    -- Run init functions for any newly discovered dependencies.
+    -- verify_and_install() returns synthetic plugins with no user-provided init
+    -- today, so this call is a no-op. Kept for future-proofing if the dep
+    -- system ever supports user-provided init fields in dependency specs.
+    M._run_init_functions(new_deps)
   end
 
   -- Persist initial state on first run so it's explicitly tracked
@@ -724,6 +749,7 @@ function M.setup(opts)
           "lazy",
           "priority",
           "config",
+          "init",
           "ai_review",
         }
         for _, field in ipairs(non_trigger) do
@@ -767,6 +793,9 @@ function M.setup(opts)
 
   -- Share config with UI
   UI.config = M.config
+
+  -- Run init() functions at startup, before any plugin code loads
+  M._run_init_functions()
 
   M._bootstrap()
   M._setup_lazy_load()

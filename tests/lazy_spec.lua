@@ -986,6 +986,163 @@ Helpers.describe("Lazy Loading", function()
     package.loaded["priority-test-mod"] = nil
   end)
 
+  -- init() tests
+
+  Helpers.it("calls init() during setup before plugin loads", function()
+    local init_called = false
+    local init_plugin = nil
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/init-basic",
+          init = function(p)
+            init_called = true
+            init_plugin = p
+          end,
+        },
+      },
+    })
+
+    Helpers.expect(init_called).to_be(true)
+    Helpers.expect(init_plugin).to_be_truthy()
+    Helpers.expect(init_plugin.name).to_be("init-basic")
+  end)
+
+  Helpers.it("calls init() even for lazy plugins", function()
+    local init_called = false
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/init-lazy",
+          lazy = true,
+          init = function()
+            init_called = true
+          end,
+          event = "VeryLazy",
+        },
+      },
+    })
+
+    Helpers.expect(init_called).to_be(true)
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_init-lazy")
+  end)
+
+  Helpers.it("calls init() before config()", function()
+    local order = {}
+
+    package.loaded["init-order"] = {
+      setup = function()
+        table.insert(order, "config")
+      end,
+    }
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/init-order",
+          init = function()
+            table.insert(order, "init")
+          end,
+          opts = {},
+        },
+      },
+    })
+
+    Helpers.expect(order[1]).to_be("init")
+    Helpers.expect(order[2]).to_be("config")
+
+    package.loaded["init-order"] = nil
+  end)
+
+  Helpers.it("handles init() errors gracefully", function()
+    local notifications = {}
+    local original_notify = vim.notify
+    ---@diagnostic disable-next-line: duplicate-set-field
+    vim.notify = function(msg, level)
+      table.insert(notifications, { msg = msg, level = level })
+    end
+
+    local ok = pcall(packard.setup, {
+      self_management = false,
+      plugins = {
+        {
+          "foo/init-error",
+          init = function()
+            error("init boom")
+          end,
+        },
+      },
+    })
+
+    -- Restore before assertions
+    vim.notify = original_notify
+
+    -- setup should not crash even though init() errors
+    Helpers.expect(ok).to_be(true)
+
+    -- Find the init error notification
+    local found_init_error = false
+    for _, n in ipairs(notifications) do
+      if n.msg and n.msg:match("init%-error") and n.msg:match("init boom") then
+        found_init_error = true
+        break
+      end
+    end
+    Helpers.expect(found_init_error).to_be(true)
+  end)
+
+  Helpers.it("later spec wins init from duplicate specs", function()
+    local init_value = nil
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/init-merge",
+          init = function()
+            init_value = "first"
+          end,
+        },
+        {
+          "foo/init-merge",
+          init = function()
+            init_value = "second"
+          end,
+        },
+      },
+    })
+
+    Helpers.expect(init_value).to_be("second")
+  end)
+
+  Helpers.it("later spec omitting init preserves earlier init", function()
+    local init_value = nil
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/init-merge-2",
+          init = function()
+            init_value = "first"
+          end,
+        },
+        {
+          "foo/init-merge-2",
+          -- init omitted — should preserve the first init function
+          opts = { some_opt = true },
+        },
+      },
+    })
+
+    Helpers.expect(init_value).to_be("first")
+  end)
+
   -- Restore mocks
   vim.pack.add = original_pack_add
   vim.fn.isdirectory = original_isdirectory

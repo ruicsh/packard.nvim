@@ -73,6 +73,7 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 | `ft` | `string\|string[]` | Load on filetype(s). |
 | `lazy` | `boolean` | If `false`, load immediately on startup (default: `true`). |
 | `config` | `function` | Function called after plugin loads: `function(plugin, opts)`. Optional — if omitted but `opts` is present, Packard auto-calls `require("plugin").setup(opts)`. |
+| `init` | `function` | Function called at **startup** before the plugin loads: `function(plugin)`. Useful for setting `vim.g.*` values that VimScript plugins check at startup. Runs for all plugins regardless of `lazy` setting. |
 | `opts` | `table` | Options passed to the `config` function. If `config` is absent, auto-invokes `require("plugin").setup(opts)`. |
 
 Example:
@@ -102,6 +103,17 @@ If you need custom setup logic, provide an explicit `config`:
   config = function(plugin, opts)
     require("snacks").setup(opts)
   end
+}
+```
+
+`init` runs at startup before the plugin loads — useful for early `vim.g.*` setup:
+
+```lua
+{
+  "vim-scripts/old-vim-plugin",
+  init = function(plugin)
+    vim.g.old_plugin_setting = "value"
+  end,
 }
 ```
 
