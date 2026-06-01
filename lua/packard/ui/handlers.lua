@@ -52,12 +52,19 @@ return function(UI)
       Lockfile.invalidate()
       local new_commit = Lockfile.get_installed_commit(plugin_name)
 
-      -- Log the update
+      -- Log the update only if the PackChanged autocmd hasn't already.
+      -- The autocmd fires synchronously during vim.pack.update() and may
+      -- have already logged this transition and dequeued the plugin.
       if old_commit and new_commit and old_commit ~= new_commit then
-        State.log_update(owner_repo, old_commit, new_commit)
+        local s = State.read()
+        local logs = s.update_log[owner_repo] or {}
+        local already_logged = #logs > 0 and logs[1].from == old_commit and logs[1].to == new_commit
+        if not already_logged then
+          State.log_update(owner_repo, old_commit, new_commit)
+        end
       end
 
-      -- Dequeue from pending
+      -- Dequeue from pending (idempotent — autocmd may have already done this)
       State.dequeue(owner_repo)
 
       print("packard: approved " .. owner_repo)

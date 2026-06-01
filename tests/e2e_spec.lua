@@ -76,9 +76,32 @@ vim.pack = {
   get = function()
     return {}
   end,
-  update = function()
-    -- Simulate PackChanged
-    vim.api.nvim_exec_autocmds("User", { pattern = "PackChanged" })
+  update = function(opts)
+    -- Simulate what Neovim does: update the lockfile on disk, then fire
+    -- PackChanged so the autocmd picks up the before/after comparison.
+    local names = type(opts) == "table" and opts or {}
+    local lock_path = vim.fs.joinpath(vim.fn.stdpath("config"), "nvim-pack-lock.json")
+    for _, name in ipairs(names) do
+      -- Write new lockfile data before firing the event
+      if mock_files[lock_path] then
+        local lockdata = vim.fn.json_decode(mock_files[lock_path])
+        if lockdata.plugins and lockdata.plugins[name] then
+          lockdata.plugins[name].rev = "sha123"
+        elseif lockdata[name] then
+          lockdata[name].ref = "sha123"
+        end
+        mock_files[lock_path] = vim.fn.json_encode(lockdata)
+      end
+      vim.api.nvim_exec_autocmds("PackChanged", {
+        pattern = name,
+        data = {
+          active = true,
+          kind = "update",
+          spec = { name = name },
+          path = vim.fn.stdpath("data") .. "/site/pack/core/opt/" .. name,
+        },
+      })
+    end
   end,
 }
 
@@ -134,31 +157,23 @@ Helpers.describe("End-to-end flow", function()
     Helpers.expect(target_line > 0).to_be_truthy()
     vim.api.nvim_win_set_cursor(UI.win, { target_line, 0 })
 
-    -- Mock Lockfile.read to simulate disk state change across the PackChanged autocmd.
-    -- First call (old_lock) returns old ref; after invalidate(), the second call returns new SHA.
-    local Lockfile = require("packard.lockfile")
-    local original_lockfile_read = Lockfile.read
-    local lr_call = 0
-    --[[@diagnostic disable-next-line: duplicate-set-field]]
-    Lockfile.read = function()
-      lr_call = lr_call + 1
-      if lr_call == 1 then
-        return { repo = { ref = "old-sha" } } -- before update
-      end
-      return { repo = { ref = "sha123" } } -- after update (new lockfile on disk)
-    end
+    -- No Lockfile.read mock needed: the real implementation reads from
+    -- mock_files via io.open, and the vim.pack.update mock above writes
+    -- the new lockfile before firing PackChanged.  This exercises the
+    -- autocmd's actual before/after comparison.
 
     UI.handle_approve()
 
-    -- 5. Verify it's dequeued and logged
+    -- 5. Verify it's dequeued and logged (autocmd logs, handle_approve deduplicates)
     state = State.read()
     Helpers.expect(state.queue["user/repo"]).to_be_nil()
     Helpers.expect(state.update_log["user/repo"] ~= nil).to_be_truthy()
+    Helpers.expect(#state.update_log["user/repo"]).to_be(1)
+    Helpers.expect(state.update_log["user/repo"][1].from).to_be("old-sha")
     Helpers.expect(state.update_log["user/repo"][1].to).to_be("sha123")
 
     -- Restore
     vim.fn.confirm = original_confirm
-    Lockfile.read = original_lockfile_read
     UI.close()
   end)
 
@@ -272,6 +287,51 @@ Helpers.describe("End-to-end flow", function()
     -- Should contain the specific error message for repo2 (network error)
     Helpers.expect(n.msg:match("repo2:") ~= nil).to_be_truthy()
     Helpers.expect(n.msg:match("Could not resolve host") ~= nil).to_be_truthy()
+  end)
+
+  Helpers.it("populates lockfile after clean install so commits are not unknown", function()
+    local Lockfile = require("packard.lockfile")
+    local lock_path = vim.fs.joinpath(vim.fn.stdpath("config"), "nvim-pack-lock.json")
+
+    -- Clear any leftover state from prior tests
+    Lockfile.invalidate()
+    mock_files[lock_path] = nil
+
+    -- Mock vim.pack.add to simulate what Neovim does on real install:
+    -- write the lockfile, then fire PackChanged so the autocmd refreshes.
+    vim.pack.add = function()
+      mock_files[lock_path] = vim.fn.json_encode({
+        plugins = {
+          repo = {
+            src = "https://github.com/user/repo.git",
+            rev = "abc1234deadbeef000000000000000000000000",
+          },
+        },
+      })
+      vim.api.nvim_exec_autocmds("PackChanged", {
+        pattern = "repo",
+        data = {
+          active = false,
+          kind = "install",
+          spec = { name = "repo" },
+          path = vim.fn.stdpath("data") .. "/site/pack/core/opt/repo",
+        },
+      })
+    end
+    vim.pack.get = function()
+      return {
+        { spec = { name = "repo" } },
+      }
+    end
+
+    packard.setup({
+      plugins = { "user/repo" },
+      self_management = false,
+    })
+
+    -- The lockfile should now be readable with the correct SHA
+    local sha = Lockfile.get_installed_commit("repo")
+    Helpers.expect(sha).to_be("abc1234deadbeef000000000000000000000000")
   end)
 end)
 

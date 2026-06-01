@@ -18,14 +18,14 @@ function Lockfile.read()
   end
 
   if vim.fn.filereadable(lockfile_path) == 0 then
-    Lockfile._cache = {}
-    return Lockfile._cache
+    -- Don't cache the empty result: the lockfile may appear after vim.pack.add()
+    -- writes it, and caching would mask the update until invalidate() is called.
+    return {}
   end
 
   local f = io.open(lockfile_path, "r")
   if not f then
-    Lockfile._cache = {}
-    return Lockfile._cache
+    return {}
   end
 
   local content = f:read("*a")
@@ -33,8 +33,7 @@ function Lockfile.read()
 
   local ok, decoded = pcall(vim.json.decode, content)
   if not ok or type(decoded) ~= "table" then
-    Lockfile._cache = {}
-    return Lockfile._cache
+    return {}
   end
 
   Lockfile._cache = decoded
