@@ -327,4 +327,43 @@ function M.setup_lazy_load(plugins, load_fn)
   end
 end
 
+---@private
+---Set up the colorscheme auto-load: a single ColorSchemePre autocmd that,
+---on :colorscheme <name>, scans every plugin's install path for
+---colors/<name>.{lua,vim} and triggers load_and_config on the first match.
+---Matches lazy.nvim behavior exactly. Built-in Neovim colorschemes short-circuit.
+---@param plugins table All plugins (for iteration)
+---@param load_fn function load_and_config callable (single arg: plugin)
+function M.setup_colorscheme_autoload(plugins, load_fn)
+  local group = vim.api.nvim_create_augroup("packard_colorscheme", { clear = true })
+  vim.api.nvim_create_autocmd("ColorSchemePre", {
+    group = group,
+    callback = function(event)
+      local name = event.match
+      if not name or name == "" then
+        return
+      end
+      -- Short-circuit built-in Neovim colorschemes
+      local builtins = vim.fn.getcompletion("", "color")
+      if vim.tbl_contains(builtins, name) then
+        return
+      end
+      -- Scan each unloaded plugin's install path
+      for _, plugin in ipairs(plugins) do
+        if not plugin._cond and not package.loaded["packard.plugins." .. plugin.name] then
+          local base = Utils.get_plugin_path(plugin)
+          for _, ext in ipairs({ "lua", "vim" }) do
+            local path = base .. "/colors/" .. name .. "." .. ext
+            if vim.uv and vim.uv.fs_stat and vim.uv.fs_stat(path) then
+              load_fn(plugin)
+              return
+            end
+          end
+        end
+      end
+    end,
+    desc = "packard: colorscheme autoload",
+  })
+end
+
 return M

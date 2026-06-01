@@ -310,6 +310,7 @@ function M.setup(opts, ctx)
 
   ctx._bootstrap()
   ctx._setup_lazy_load()
+  ctx._setup_colorscheme()
   ctx._register_commands()
 
   -- T-7.1: Startup notification

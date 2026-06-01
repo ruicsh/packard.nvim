@@ -54,6 +54,12 @@ M._setup_lazy_load = function()
 end
 
 ---@private
+---Set up colorscheme auto-load via ColorSchemePre autocmd.
+M._setup_colorscheme = function()
+  lazy.setup_colorscheme_autoload(M.plugins, M._load_and_config)
+end
+
+---@private
 ---Bootstrap: install via vim.pack.add, build, auto-deps, state, PackChanged.
 M._bootstrap = function()
   core_bootstrap.bootstrap(M)

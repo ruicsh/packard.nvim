@@ -191,6 +191,51 @@ Local plugins:
 The `dir` field is mutually exclusive with an `owner/repo` source string.
 If both are provided, packard raises an error.
 
+## Colorscheme Auto-Load
+
+Colorscheme plugins work out of the box — no spec field required. When you run
+`:colorscheme tokyonight`, packard's `ColorSchemePre` autocmd scans each
+plugin's install path for `colors/tokyonight.{lua,vim}` and loads the first
+match. Built-in Neovim colorschemes (e.g. `default`, `habamax`) are detected
+and short-circuit immediately.
+
+**Main colorscheme (loaded at startup):**
+
+```lua
+{
+  "folke/tokyonight.nvim",
+  lazy = false,         -- load at startup so it's ready before any other plugin
+  priority = 1000,      -- ensure this loads before other start plugins
+  opts = {},
+  config = function(_, opts)
+    require("tokyonight").setup(opts)
+    vim.cmd.colorscheme("tokyonight")
+  end,
+}
+```
+
+**Lazy-loaded colorscheme (loaded on `:colorscheme`):**
+
+Any `lazy = true` colorscheme plugin with explicit triggers will be loaded
+on demand when its `colors/<name>.{lua,vim}` file matches:
+
+```lua
+{
+  "catppuccin/nvim",
+  lazy = true,           -- truly lazy: must have at least one trigger
+  event = "VeryLazy",   -- any trigger keeps this lazy until needed
+  opts = {},
+}
+
+-- then elsewhere in your config:
+vim.cmd.colorscheme("catppuccin")
+-- ^ loads the plugin on first use via ColorSchemePre autocmd
+```
+
+> **Note:** `lazy = true` without any triggers (`keys`, `cmd`, `event`, `ft`)
+> has no effect — packard eagerly loads triggerless plugins regardless of the
+> `lazy` setting. Always pair `lazy = true` with at least one trigger.
+
 ## Duplicate Spec Merging
 
 When multiple specs for the same plugin are declared, trigger fields
