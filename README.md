@@ -66,7 +66,8 @@ require("packard").setup({
 Packard supports standard `lazy.nvim`-style lazy-loading fields:
 
 | Field | Type | Description |
-|---|---|---|
+|---|---|---|---|
+| `dir` | `string` | Use a local filesystem directory for the plugin (no git remote). Plugin must already exist on disk. No clone/fetch/checkout operations occur. The plugin name is derived from the last path component. |
 | `keys` | `string\|string[]\|table\|function` | Load on keymap(s). Supports simple strings, full mapping tables, or a function that returns key specs. |
 | `cmd` | `string\|string[]` | Load on command(s). |
 | `event` | `string\|string[]` | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`. |
@@ -166,6 +167,31 @@ If the module name cannot be auto-detected (e.g., the repo name doesn't match th
   end,
 }
 ```
+
+## Local Plugins
+
+To use a plugin from your local filesystem (e.g., a development copy), use the `dir` field instead of an `owner/repo` string:
+
+```lua
+{
+  dir = "~/projects/my-plugin.nvim",
+  -- name is optional; derived from the path if omitted
+}
+```
+
+Local plugins:
+- **Must already exist on disk** — packard does not clone or fetch them
+- **Skip all git operations** — no clone, fetch, checkout, or clean
+- **Skip the cooldown queue** — no remote changes to review
+- **Support all lazy-loading triggers** — `keys`, `cmd`, `event`, `ft`, `lazy`
+- **Support `build` steps** — run in the plugin's local directory
+- **Support dependencies** on remote (managed) plugins
+- **Are added to `rtp` directly** at load time instead of via `:packadd`
+
+The `dir` field is mutually exclusive with an `owner/repo` source string.
+If both are provided, packard raises an error.
+
+## Duplicate Spec Merging
 
 When multiple specs for the same plugin are declared, trigger fields
 (`keys`, `cmd`, `event`, `ft`) are merged from all specs.

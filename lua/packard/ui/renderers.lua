@@ -27,7 +27,7 @@ return function(UI)
     local max_name_len = 30
     local max_branch_len = 15
     for _, plugin in ipairs(UI.plugins) do
-      local path = Utils.get_plugin_path(plugin.name)
+      local path = Utils.get_plugin_path(plugin)
       if vim.fn.isdirectory(path) == 0 then
         table.insert(grouped.anomalies, plugin)
       else

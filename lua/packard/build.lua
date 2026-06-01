@@ -88,7 +88,7 @@ function Build.run(plugin, opts)
   opts = opts or {}
 
   local builders = plugin.build
-  local plugin_path = Utils.get_plugin_path(plugin.name)
+  local plugin_path = Utils.get_plugin_path(plugin)
 
   -- Check if plugin is actually installed on disk
   if vim.fn.isdirectory(plugin_path) == 0 then

@@ -171,7 +171,8 @@ Helpers.describe("Fetch.check_all", function()
     mock_commands["git fetch origin main"] = { code = 0 }
     mock_commands["git rev-parse origin/main"] = { code = 0, stdout = "new-sha-123\n" }
     -- merge-base returns code 128: git error (bad object, stale repo, etc.), NOT a force-push
-    mock_commands["git merge-base --is-ancestor installed-sha FETCH_HEAD"] = { code = 128, stderr = "fatal: bad object" }
+    mock_commands["git merge-base --is-ancestor installed-sha FETCH_HEAD"] =
+      { code = 128, stderr = "fatal: bad object" }
 
     local Lockfile = require("packard.lockfile")
     local original_get_installed = Lockfile.get_installed_commit

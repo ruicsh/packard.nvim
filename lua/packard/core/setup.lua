@@ -6,6 +6,7 @@ local Cooldown = require("packard.cooldown")
 local Loader = require("packard.loader")
 local Parser = require("packard.parser")
 local UI = require("packard.ui")
+local Utils = require("packard.utils")
 
 local M = {}
 
@@ -169,7 +170,17 @@ function M.setup(opts, ctx)
     if type(p) == "string" then
       p = { p }
     end
+    -- Resolve the dedup key: [1] for remote, dir path for local
     local source = p[1]
+    if not source and p.dir then
+      if type(p.dir) ~= "string" then
+        error(string.format("packard: 'dir' must be a string, got %s", type(p.dir)))
+      end
+      source = Utils.norm(p.dir)
+    end
+    if not source and type(p) == "table" then
+      error("packard: plugin spec must have a 'owner/repo' string or 'dir' field")
+    end
     if source then
       -- Resolve enabled: boolean (lazy.nvim-compat) or fun():boolean
       local enabled = p.enabled
@@ -191,7 +202,8 @@ function M.setup(opts, ctx)
           -- Remove from final_specs
           local idx
           for j = 1, #final_specs do
-            if final_specs[j][1] == source then
+            local sj = final_specs[j][1] or (final_specs[j].dir and Utils.norm(final_specs[j].dir))
+            if sj == source then
               idx = j
               break
             end
@@ -222,6 +234,8 @@ function M.setup(opts, ctx)
           "ai_review",
           "cond",
           "build",
+          "dir",
+          "name",
         }
         for _, field in ipairs(non_trigger) do
           if p[field] ~= nil then
@@ -246,7 +260,7 @@ function M.setup(opts, ctx)
     local found = false
     for _, p in ipairs(final_specs) do
       local source = type(p) == "string" and p or p[1]
-      if source:match("ruicsh/packard.nvim") then
+      if source and source:match("ruicsh/packard.nvim") then
         found = true
         break
       end

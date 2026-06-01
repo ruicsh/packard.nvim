@@ -34,8 +34,13 @@ function M.load_and_config(plugin, plugins)
   end
 
   -- Load the plugin code
-  -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
-  pcall(vim.cmd.packadd, plugin.name)
+  if plugin.is_local then
+    -- Local plugins are outside packpath, so add dir to rtp directly
+    vim.opt.rtp:prepend(plugin.dir)
+  else
+    -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
+    pcall(vim.cmd.packadd, plugin.name)
+  end
 
   -- Resolve opts: lazy.nvim convention — opts can be a function returning a table
   local opts = plugin.opts

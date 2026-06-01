@@ -11,6 +11,10 @@ local M = {}
 ---initialize state, and wire up the PackChanged autocommand.
 function M.bootstrap(ctx)
   local function build_pack_spec(plugin)
+    -- Local plugins have no remote source; skip vim.pack.add
+    if plugin.is_local then
+      return nil
+    end
     -- Create the spec for vim.pack.add
     local pack_spec = {
       src = plugin.url,
@@ -49,20 +53,30 @@ function M.bootstrap(ctx)
 
   -- Snapshot which plugins are already on disk before installation.
   -- This lets us run build steps only for newly installed plugins.
+  -- For local plugins, the dir must already exist.
   local pre_installed = {}
   for _, plugin in ipairs(ctx.plugins) do
-    pre_installed[plugin.name] = vim.fn.isdirectory(Utils.get_plugin_path(plugin.name)) == 1
+    if plugin.is_local then
+      pre_installed[plugin.name] = true
+      if vim.fn.isdirectory(plugin.dir) == 0 then
+        vim.notify(string.format("packard: local plugin dir does not exist: '%s'", plugin.dir), vim.log.levels.WARN)
+      end
+    else
+      pre_installed[plugin.name] = vim.fn.isdirectory(Utils.get_plugin_path(plugin.name)) == 1
+    end
   end
 
   -- Call Neovim's built-in pack manager
   -- Pass all specs in a single vim.pack.add() call so Neovim installs them
   -- in parallel with a unified progress indicator instead of one-by-one.
   if vim.pack and vim.pack.add then
-    -- Build all specs upfront
+    -- Build all specs upfront; skip local plugins
     local all_specs = {}
     for _, plugin in ipairs(ctx.plugins) do
       local pack_spec = build_pack_spec(plugin)
-      table.insert(all_specs, pack_spec)
+      if pack_spec then
+        table.insert(all_specs, pack_spec)
+      end
     end
 
     -- confirm=false because packard manages plugins programmatically:
@@ -99,7 +113,7 @@ function M.bootstrap(ctx)
 
     local failed = {}
     for _, plugin in ipairs(ctx.plugins) do
-      if not installed[plugin.name] then
+      if not plugin.is_local and not installed[plugin.name] then
         table.insert(failed, {
           owner_repo = plugin.owner_repo,
           error = batch_errors[plugin.name] or "installation failed",
@@ -127,10 +141,12 @@ function M.bootstrap(ctx)
   -- Only run build if the plugin directory didn't exist before vim.pack.add()
   -- (i.e., it was just freshly installed). This avoids re-running build on
   -- every startup for already-installed plugins.
+  -- For local plugins, build steps run on every startup (always "fresh install").
   for _, plugin in ipairs(ctx.plugins) do
-    if not pre_installed[plugin.name] then
+    if not pre_installed[plugin.name] or plugin.is_local then
       -- Plugin was just installed; check if it has a build step
-      if plugin.build ~= nil or Build._get_build_file(Utils.get_plugin_path(plugin.name)) then
+      local plugin_path = Utils.get_plugin_path(plugin)
+      if plugin.build ~= nil or Build._get_build_file(plugin_path) then
         Build.run(plugin)
       end
     end
@@ -138,7 +154,8 @@ function M.bootstrap(ctx)
 
   -- Cache whether each plugin has a build step (avoids repeated filereadable calls in the UI).
   for _, plugin in ipairs(ctx.plugins) do
-    plugin._has_build = plugin.build ~= nil or Build._get_build_file(Utils.get_plugin_path(plugin.name)) ~= nil
+    local plugin_path = Utils.get_plugin_path(plugin)
+    plugin._has_build = plugin.build ~= nil or Build._get_build_file(plugin_path) ~= nil
   end
 
   -- Auto-resolve undeclared dependencies
@@ -203,8 +220,8 @@ function M.bootstrap(ctx)
 
               -- Run build step for the updated plugin
               for _, p in ipairs(ctx.plugins) do
-                if p.name == name then
-                  local plugin_path = Utils.get_plugin_path(p.name)
+                if p.name == name and not p.is_local then
+                  local plugin_path = Utils.get_plugin_path(p)
                   if p.build ~= nil or Build._get_build_file(plugin_path) then
                     Build.run(p)
                     -- Refresh the cache so the UI indicator stays accurate.

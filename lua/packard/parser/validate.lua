@@ -1,5 +1,18 @@
 local M = {}
 
+---Validate the `dir` field (must be a non-empty string if provided).
+---@param spec table Raw plugin spec
+function M.validate_dir(spec)
+  if spec.dir ~= nil then
+    if type(spec.dir) ~= "string" then
+      error(string.format("packard: 'dir' must be a string, got %s", type(spec.dir)))
+    end
+    if spec.dir == "" then
+      error("packard: 'dir' must not be empty")
+    end
+  end
+end
+
 ---Validate and resolve pin fields (branch, tag, commit, version, minimum_release_age).
 ---@param spec table Raw plugin spec
 ---@param owner_repo string

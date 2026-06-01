@@ -333,7 +333,7 @@ return function(UI)
       return
     end
 
-    local path = Utils.get_plugin_path(plugin.name)
+    local path = Utils.get_plugin_path(plugin)
     local cmd = {
       "git",
       "log",

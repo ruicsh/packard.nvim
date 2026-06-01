@@ -319,6 +319,84 @@ local function test_complex_dependencies()
   assert(packard.plugins[5].owner_repo == "user/main")
 end
 
+local function test_dir_local_plugin()
+  print("Testing dir local plugin...")
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { dir = "/tmp/test-plugin" },
+    },
+  })
+
+  assert(#packard.plugins == 1)
+  local p = packard.plugins[1]
+  assert(p.is_local == true, "should be marked as local")
+  assert(p.dir == "/tmp/test-plugin", "dir should be the normalized path")
+  assert(p.url == nil, "url should be nil for local plugins")
+  assert(p.name == "test-plugin", "name derived from dir path")
+  assert(p.owner_repo == "/tmp/test-plugin", "owner_repo is the normalized dir path")
+end
+
+local function test_dir_with_name()
+  print("Testing dir with explicit name...")
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { dir = "/tmp/custom-path", name = "my-plugin" },
+    },
+  })
+
+  local p = packard.plugins[1]
+  assert(p.name == "my-plugin", "explicit name should override path-derived name")
+  assert(p.is_local == true)
+  assert(p.dir == "/tmp/custom-path")
+end
+
+local function test_dir_tilde_expansion()
+  print("Testing dir tilde expansion...")
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { dir = "~/projects/foo.nvim" },
+    },
+  })
+
+  local p = packard.plugins[1]
+  assert(p.is_local == true)
+  -- The "~" should be expanded to the home directory
+  assert(not p.dir:match("^~"), "tilde should be expanded")
+  assert(p.dir:match("projects/foo%.nvim$"), "should end with projects/foo.nvim")
+  assert(p.name == "foo.nvim", "name derived from dir path")
+end
+
+local function test_dir_and_source_error()
+  print("Testing dir with source error...")
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { "owner/repo", dir = "/tmp/x" } } })
+  end, "cannot both be specified")
+end
+
+local function test_dir_missing_source_and_dir()
+  print("Testing missing source and dir error...")
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { {} } })
+  end, "must have a 'owner/repo' string or 'dir' field")
+end
+
+local function test_dir_empty_string_error()
+  print("Testing empty dir string error...")
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { dir = "" } } })
+  end, "must not be empty")
+end
+
+local function test_dir_non_string_error()
+  print("Testing non-string dir error...")
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { dir = 42 } } })
+  end, "must be a string, got number")
+end
+
 local function test_main_field()
   print("Testing main field...")
 
@@ -406,5 +484,12 @@ test_dependencies()
 test_complex_dependencies()
 test_main_field()
 test_version_fields()
+test_dir_local_plugin()
+test_dir_with_name()
+test_dir_tilde_expansion()
+test_dir_and_source_error()
+test_dir_missing_source_and_dir()
+test_dir_empty_string_error()
+test_dir_non_string_error()
 
 print("Parser tests passed!")

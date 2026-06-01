@@ -7,7 +7,9 @@ local Parser = {}
 ---@class NormalizedPlugin
 ---@field owner_repo string
 ---@field name string
----@field url string
+---@field url string|nil nil for local (dir-based) plugins
+---@field dir string|nil Absolute normalized path for local plugins
+---@field is_local boolean true when dir is provided (no remote git operations)
 ---@field branch string|nil
 ---@field version string|nil
 ---@field tag string|nil
@@ -58,12 +60,15 @@ function Parser.parse_all(plugins, defaults)
     end
 
     local source = spec[1]
-    if type(source) ~= "string" then
-      error("packard: plugin: missing 'owner/repo' string")
+    if type(source) ~= "string" and not spec.dir then
+      error("packard: plugin: missing 'owner/repo' string or 'dir' field")
     end
 
-    -- Parse source
-    local owner_repo, name, url = Source.parse(source, spec)
+    -- Validate dir field before parsing
+    Validate.validate_dir(spec)
+
+    -- Parse source (handles both remote and local)
+    local owner_repo, name, url, is_local = Source.parse(source, spec)
 
     -- Dedup
     if seen[owner_repo] then
@@ -87,6 +92,8 @@ function Parser.parse_all(plugins, defaults)
       owner_repo = owner_repo,
       name = name,
       url = url,
+      dir = is_local and owner_repo or nil,
+      is_local = is_local or false,
       branch = pin.branch,
       version = pin.version,
       tag = pin.tag,

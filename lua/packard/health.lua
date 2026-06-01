@@ -96,7 +96,7 @@ function Health.check()
   -- Plugins
   vim.health.start("Plugins")
   for _, plugin in ipairs(packard.plugins) do
-    local path = Utils.get_plugin_path(plugin.name)
+    local path = Utils.get_plugin_path(plugin)
     if vim.fn.isdirectory(path) == 1 then
       vim.health.ok(string.format("'%s': installed", plugin.owner_repo))
     else
@@ -111,7 +111,7 @@ function Health.check()
   local missing_count = 0
 
   for _, plugin in ipairs(packard.plugins) do
-    local path = Utils.get_plugin_path(plugin.name)
+    local path = Utils.get_plugin_path(plugin)
     if vim.fn.isdirectory(path) == 1 then
       local requires = Deps.scan_requires(path)
       for module in pairs(requires) do

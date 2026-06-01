@@ -1,9 +1,42 @@
 local Utils = {}
 
----Get the installation path for a plugin
----@param name string
+---Normalize a filesystem path: expand ~, convert backslashes, deduplicate
+---slashes, strip trailing slash.  Matches lazy.nvim's Util.norm behaviour.
+---@param path string
 ---@return string
-function Utils.get_plugin_path(name)
+function Utils.norm(path)
+  if path:sub(1, 1) == "~" then
+    local home = vim.uv.os_homedir()
+    if home:sub(-1) == "\\" or home:sub(-1) == "/" then
+      home = home:sub(1, -2)
+    end
+    path = home .. path:sub(2)
+  end
+  path = path:gsub("\\", "/"):gsub("/+", "/")
+  return path:sub(-1) == "/" and path:sub(1, -2) or path
+end
+
+---Derive a plugin name from a filesystem path (last path component).
+---Strips .git suffix if present, matching lazy.nvim's Spec.get_name.
+---@param path string
+---@return string
+function Utils.path_name(path)
+  path = path:gsub("/+$", "")
+  local name = path:match("/([^/]+)$") or path
+  name = name:sub(-4) == ".git" and name:sub(1, -5) or name
+  return name
+end
+
+---Get the installation path for a plugin.
+---Accepts either a plugin name string or a NormalizedPlugin table.
+---When a table with a `dir` field is passed, returns `plugin.dir` directly.
+---@param plugin_or_name string|table
+---@return string
+function Utils.get_plugin_path(plugin_or_name)
+  if type(plugin_or_name) == "table" and plugin_or_name.dir then
+    return plugin_or_name.dir
+  end
+  local name = type(plugin_or_name) == "table" and plugin_or_name.name or plugin_or_name
   return vim.fs.joinpath(vim.fn.stdpath("data"), "site", "pack", "core", "opt", name)
 end
 
@@ -14,11 +47,9 @@ end
 ---@param str string
 ---@return string
 function Utils.convert_control_chars(str)
-  -- Convert ^X at start of string (can't be negation inside a character class)
   str = str:gsub("^%^([A-Z%[%]\\%^_])", function(c)
     return string.char(c:byte() - 64)
   end)
-  -- Convert ^X not after "[" (negation context inside [...] character class)
   str = str:gsub("([^%[])%^([A-Z%[%]\\%^_])", function(prev, c)
     return prev .. string.char(c:byte() - 64)
   end)

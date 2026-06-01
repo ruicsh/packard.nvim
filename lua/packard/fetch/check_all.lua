@@ -25,10 +25,7 @@ local function check_force_push(plugin, result)
 
   -- Compare installed commit against whatever was just fetched
   local fp_check = vim
-    .system(
-      { "git", "merge-base", "--is-ancestor", installed_sha, "FETCH_HEAD" },
-      { cwd = Utils.get_plugin_path(plugin.name) }
-    )
+    .system({ "git", "merge-base", "--is-ancestor", installed_sha, "FETCH_HEAD" }, { cwd = Utils.get_plugin_path(plugin) })
     :wait()
 
   -- exit code 0 = ancestor, 1 = not ancestor (force-push), other = git error
@@ -52,19 +49,28 @@ local function check_all(plugins, on_progress)
     return {}
   end
 
-  -- T-3.1.1: Network probe
-  if not Git.check_network(plugins[1].url, 5000) then
+  -- T-3.1.1: Network probe (skip if all plugins are local)
+  local first_remote
+  for _, p in ipairs(plugins) do
+    if not p.is_local then
+      first_remote = p
+      break
+    end
+  end
+  if first_remote and not Git.check_network(first_remote.url, 5000) then
     error("packard: network unreachable")
   end
 
   local total = #plugins
   local jobs = {}
 
-  -- Pre-resolve default branches and tags in parallel
+  -- Pre-resolve default branches and tags in parallel (skip local plugins)
   local branch_jobs = {}
   local tag_jobs = {}
   for i, plugin in ipairs(plugins) do
-    if not plugin.branch and not plugin.version then
+    if plugin.is_local then
+      -- No remote operations for local plugins
+    elseif not plugin.branch and not plugin.version then
       branch_jobs[i] = vim.system({ "git", "ls-remote", "--symref", plugin.url, "HEAD" })
     elseif plugin.version and not plugin.branch then
       -- S2: Combine ls-remote calls for default branch and tags
@@ -91,24 +97,29 @@ local function check_all(plugins, on_progress)
 
   -- T-3.1.2: Batch spawn
   for i, plugin in ipairs(plugins) do
-    local plugin_path = Utils.get_plugin_path(plugin.name)
-
-    -- Skip plugins that are not installed on disk
-    if vim.fn.isdirectory(plugin_path) == 0 then
-      -- Will be handled in the collection loop below
-      jobs[i] = { plugin = plugin, missing = true }
-    elseif plugin.version then
-      -- S1: For version-tracked plugins, we don't need to fetch a branch.
-      -- Tag resolution is handled via ls-remote --tags (tag_jobs).
-      jobs[i] = { plugin = plugin, no_fetch = true }
+    if plugin.is_local then
+      -- Local plugins have no remote to fetch; treat as up-to-date
+      jobs[i] = { plugin = plugin, is_local = true }
     else
-      -- T-1.1.4: Resolve default branch if not specified
-      local branch = plugin.branch or resolved_branches[i] or "HEAD"
+      local plugin_path = Utils.get_plugin_path(plugin)
 
-      local job = vim.system({ "git", "fetch", "origin", branch }, {
-        cwd = plugin_path,
-      })
-      jobs[i] = { job = job, plugin = plugin, branch = branch }
+      -- Skip plugins that are not installed on disk
+      if vim.fn.isdirectory(plugin_path) == 0 then
+        -- Will be handled in the collection loop below
+        jobs[i] = { plugin = plugin, missing = true }
+      elseif plugin.version then
+        -- S1: For version-tracked plugins, we don't need to fetch a branch.
+        -- Tag resolution is handled via ls-remote --tags (tag_jobs).
+        jobs[i] = { plugin = plugin, no_fetch = true }
+      else
+        -- T-1.1.4: Resolve default branch if not specified
+        local branch = plugin.branch or resolved_branches[i] or "HEAD"
+
+        local job = vim.system({ "git", "fetch", "origin", branch }, {
+          cwd = plugin_path,
+        })
+        jobs[i] = { job = job, plugin = plugin, branch = branch }
+      end
     end
   end
 
@@ -120,7 +131,10 @@ local function check_all(plugins, on_progress)
     local plugin = item.plugin
     local result = { owner_repo = plugin.owner_repo, success = false, anomaly = false }
 
-    if item.missing then
+    if item.is_local then
+      -- Local plugin: no remote to fetch, always up-to-date
+      result.success = true
+    elseif item.missing then
       -- Plugin not installed on disk
       result.error = "not installed"
     elseif item.no_fetch then
@@ -153,7 +167,7 @@ local function check_all(plugins, on_progress)
         local branch = item.branch or "FETCH_HEAD"
         local sha_obj = vim
           .system({ "git", "rev-parse", "origin/" .. branch }, {
-            cwd = Utils.get_plugin_path(plugin.name),
+            cwd = Utils.get_plugin_path(plugin),
           })
           :wait()
 
@@ -169,7 +183,7 @@ local function check_all(plugins, on_progress)
           -- Maybe it's not origin/branch but just FETCH_HEAD
           local fh_obj = vim
             .system({ "git", "rev-parse", "FETCH_HEAD" }, {
-              cwd = Utils.get_plugin_path(plugin.name),
+              cwd = Utils.get_plugin_path(plugin),
             })
             :wait()
           if fh_obj.code == 0 then

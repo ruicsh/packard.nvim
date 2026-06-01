@@ -109,7 +109,7 @@ function Deps.verify_and_install(plugins)
   local dep_map = {}
 
   for _, plugin in ipairs(plugins) do
-    local path = Utils.get_plugin_path(plugin.name)
+    local path = Utils.get_plugin_path(plugin)
     if vim.fn.isdirectory(path) == 1 then
       local requires = Deps.scan_requires(path)
       for module in pairs(requires) do
