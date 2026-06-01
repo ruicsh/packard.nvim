@@ -99,12 +99,12 @@ function M.setup(opts, ctx)
   local plugins = {}
   local file_specs = {}
 
-  if opts.plugins_dir then
-    if type(opts.plugins_dir) ~= "string" then
-      error("packard.setup: 'plugins_dir' must be a string")
+  if opts.specs_dir then
+    if type(opts.specs_dir) ~= "string" then
+      error("packard.setup: 'specs_dir' must be a string")
     end
     local errors, warnings
-    file_specs, errors, warnings = Loader.scan_all(opts.plugins_dir)
+    file_specs, errors, warnings = Loader.scan_all(opts.specs_dir)
 
     if #errors > 0 then
       vim.notify(
@@ -136,8 +136,8 @@ function M.setup(opts, ctx)
     plugins = file_specs
   end
 
-  if #plugins == 0 and not opts.plugins_dir and not opts.plugins then
-    error("packard.setup: at least one of 'plugins' or 'plugins_dir' must be provided")
+  if #plugins == 0 and not opts.specs_dir and not opts.plugins then
+    error("packard.setup: at least one of 'plugins' or 'specs_dir' must be provided")
   end
 
   local defaults = opts.defaults or {}
@@ -154,7 +154,7 @@ function M.setup(opts, ctx)
   ctx.config = {
     defaults = defaults,
     plugins = opts.plugins,
-    plugins_dir = opts.plugins_dir,
+    specs_dir = opts.specs_dir,
     ai_review = opts.ai_review,
     highlights = opts.highlights,
   }

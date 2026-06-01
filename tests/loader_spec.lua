@@ -28,7 +28,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
     })
 
     expect(#packard.plugins).to_be(3)
@@ -51,7 +51,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
     })
 
     expect(#packard.plugins).to_be(2)
@@ -71,7 +71,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
     })
 
     expect(#packard.plugins).to_be(1)
@@ -89,7 +89,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
     })
 
     -- Both plugins should be in M.plugins
@@ -117,7 +117,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
     })
 
     expect(#packard.plugins).to_be(2)
@@ -143,7 +143,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
       plugins = {
         { "owner/repo", minimum_release_age = 10 },
         "new/plugin",
@@ -174,7 +174,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
     })
 
     expect(#packard.plugins).to_be(1)
@@ -192,7 +192,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
     })
 
     expect(#packard.plugins).to_be(1)
@@ -210,7 +210,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
     })
 
     expect(#packard.plugins).to_be(2)
@@ -238,7 +238,7 @@ describe("Spec Loader", function()
 
     packard.setup({
       self_management = false,
-      plugins_dir = dir,
+      specs_dir = dir,
       plugins = { "fallback/plugin" },
     })
 

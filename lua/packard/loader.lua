@@ -128,16 +128,16 @@ function Loader._scan_recursive(path, base_path)
 end
 
 ---Scan all spec files in the directory
----@param plugins_dir string
+---@param specs_dir string
 ---@return table specs, table errors, table warnings
-function Loader.scan_all(plugins_dir)
-  local resolved = Loader.resolve_path(plugins_dir)
+function Loader.scan_all(specs_dir)
+  local resolved = Loader.resolve_path(specs_dir)
   if vim.fn.isdirectory(resolved) == 0 then
     -- Check if it exists at all
     if vim.fn.filereadable(resolved) == 1 then
-      error(string.format("packard.setup: plugins_dir '%s' exists but is a file, not a directory", resolved))
+      error(string.format("packard.setup: specs_dir '%s' exists but is a file, not a directory", resolved))
     end
-    error(string.format("packard.setup: plugins_dir '%s' does not exist", resolved))
+    error(string.format("packard.setup: specs_dir '%s' does not exist", resolved))
   end
 
   return Loader._scan_recursive(resolved, resolved)
