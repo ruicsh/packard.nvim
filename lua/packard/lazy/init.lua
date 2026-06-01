@@ -78,6 +78,17 @@ end
 ---@param plugins table All plugins
 ---@param load_fn function Function to call to load a plugin (single arg: plugin)
 function M.setup_lazy_load(plugins, load_fn)
+  -- Pre-populate package.path with each plugin's lua/ directory so spec functions
+  -- (keys, cmd, event, ft) can require() the plugin's main module at setup time.
+  -- This matches lazy.nvim: keys = function() local r = require("plugin") ... end
+  -- resolves without sourcing plugin/, ftdetect/, colors/, or syntax/ files.
+  for _, plugin in ipairs(plugins) do
+    if not plugin._cond and not plugin.is_local then
+      local lua_dir = Utils.get_plugin_path(plugin) .. "/lua"
+      package.path = lua_dir .. "/?.lua;" .. lua_dir .. "/?/init.lua;" .. package.path
+    end
+  end
+
   for _, plugin in ipairs(plugins) do
     -- Shadow the loop variable so closures capture the per-iteration value,
     -- not the reused loop variable (Lua for-loop scoping semantics).

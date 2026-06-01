@@ -313,6 +313,59 @@ Helpers.describe("Lazy Loading", function()
     Helpers.expect(ok).to_be(true)
   end)
 
+  Helpers.it("keys = fn that requires the plugin's main module works", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    -- Create a fake plugin module in a temp dir so require("foo") resolves
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/foo/init.lua"] = [[return { bar = "baz" }]],
+    })
+
+    -- Re-mock isdirectory for the rest of the test
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function(plugin_or_name)
+      return temp_dir
+    end
+
+    -- Clear any cached require (Lua caches failed require() as false)
+    local prev_foo = package.loaded["foo"]
+    package.loaded["foo"] = nil
+
+    local ok = pcall(function()
+      packard.setup({
+        self_management = false,
+        plugins = {
+          {
+            "foo/req-keys",
+            keys = function()
+              local r = require("foo")
+              return { { "<leader>rk", r.bar, desc = "req keys" } }
+            end,
+          },
+        },
+      })
+    end)
+    Helpers.expect(ok).to_be(true)
+
+    -- Stub should be registered
+    local ok_del = pcall(vim.keymap.del, "n", "<leader>rk")
+    Helpers.expect(ok_del).to_be(true)
+
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    -- Restore cached state to avoid polluting other tests
+    if prev_foo then
+      package.loaded["foo"] = prev_foo
+    else
+      package.loaded["foo"] = nil
+    end
+    cleanup()
+  end)
+
   Helpers.it("merges keys = fn from duplicate specs", function()
     packard.setup({
       self_management = false,

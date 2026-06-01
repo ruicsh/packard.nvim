@@ -68,7 +68,7 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 | Field | Type | Description |
 |---|---|---|---|
 | `dir` | `string` | Use a local filesystem directory for the plugin (no git remote). Plugin must already exist on disk. No clone/fetch/checkout operations occur. The plugin name is derived from the last path component. |
-| `keys` | `string\|string[]\|table\|function` | Load on keymap(s). Supports simple strings, full mapping tables, or a function that returns key specs. |
+| `keys` | `string\|string[]\|table\|function` | Load on keymap(s). Supports simple strings, full mapping tables, or a function that returns key specs. Functions may call `require("<plugin_module>")` — packard pre-populates `package.path` with each plugin's `lua/` dir at setup time so the module resolves without sourcing the plugin's `plugin/` or `ftdetect/` files. |
 | `cmd` | `string\|string[]` | Load on command(s). |
 | `event` | `string\|string[]` | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`. |
 | `ft` | `string\|string[]` | Load on filetype(s). |
@@ -163,6 +163,23 @@ If the module name cannot be auto-detected (e.g., the repo name doesn't match th
     return {
       { "<leader><space>", function() Snacks.picker.smart() end, desc = "Smart Picker" },
       { "<leader>,",      function() Snacks.picker.buffers() end, desc = "Buffers" },
+    }
+  end,
+}
+```
+
+If the function needs to reference the plugin's own Lua module, use `require()` — packard resolves it against the plugin's `lua/` directory:
+
+```lua
+{
+  "assistcontrol/readline.nvim",
+  keys = function()
+    local r = require("readline") -- resolves to lua/readline.lua at setup time
+    return {
+      { "<a-b>", r.backward_word, desc = "Jump word (backward)", mode = { "i", "c" } },
+      { "<a-f>", r.forward_word,  desc = "Jump word (forward)",  mode = { "i", "c" } },
+      { "<c-a>", r.beginning_of_line, desc = "Beginning of line", mode = { "i", "c" } },
+      { "<c-e>", r.end_of_line, desc = "End of line", mode = { "i", "c" } },
     }
   end,
 }

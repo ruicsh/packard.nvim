@@ -9,7 +9,7 @@ Thank you for your interest in contributing to `packard.nvim`! This document pro
 ### Key Components
 
 - **`lua/packard/parser.lua`**: Parses and normalizes plugin specs (following `lazy.nvim` conventions).
-- **`lua/packard/lazy/init.lua`**: Lazy-loading triggers (keymaps, commands, events, filetypes) plus the implicit `ColorSchemePre` autocmd that loads colorscheme plugins on `:colorscheme <name>`.
+- **`lua/packard/lazy/init.lua`**: Lazy-loading triggers (keymaps, commands, events, filetypes) plus the implicit `ColorSchemePre` autocmd that loads colorscheme plugins on `:colorscheme <name>`. Also pre-populates `package.path` with each plugin's `lua/` directory at setup time, so spec functions can `require()` the plugin's main module.
 - **`lua/packard/fetch.lua`**: Handles parallel `git fetch` operations to check for updates.
 - **`lua/packard/cooldown.lua`**: Logic for managing discovery timestamps and eligibility.
 - **`lua/packard/state.lua`**: Persistence layer for the machine-local queue, blacklist, and history.

@@ -51,6 +51,7 @@ TESTS="tests/parser_spec.lua tests/state_spec.lua" make test
 - **Spec format**: lazy.nvim-compatible (`"owner/repo"` or `{ "owner/repo", … }`). `opts` without `config` auto-calls `require("plugin").setup(opts)`.
 - **Self-management**: packard auto-prepends itself to the plugin list unless `self_management = false`.
 - **Concurrent safety**: `_is_checking` flag prevents overlapping `:Packard check` runs.
+- **Spec function `require` resolution**: `setup_lazy_load` prepends each non-cond, non-local plugin's `lua/` dir to `package.path` before evaluating `keys`/`cmd`/`event`/`ft` functions. This matches lazy.nvim: `keys = function() local p = require("plugin") ... end` works without sourcing the plugin's `plugin/`, `ftdetect/`, or `colors/` files. The mutation persists for the rest of the Neovim session (same model as lazy.nvim).
 - **Ignore `harper_ls` diagnostics** on Markdown files (README, AGENTS, etc.) — prose linting suggestions, not bugs or required fixes.
 
 ## Reference docs
