@@ -1,34 +1,22 @@
 return function(UI)
   function UI.setup_keymaps()
+    ---Create a handler that switches to the given tab and re-renders.
+    ---@param tab_id string
+    local function switch_tab(tab_id)
+      return function()
+        UI.tab = tab_id
+        UI.expanded_row = nil
+        UI.expanded_type = nil
+        UI._cursor_repo = nil
+        UI.render()
+      end
+    end
+
     local maps = {
-      ["i"] = function()
-        UI.tab = "installed"
-        UI.expanded_row = nil
-        UI.expanded_type = nil
-        UI._cursor_repo = nil
-        UI.render()
-      end,
-      ["p"] = function()
-        UI.tab = "pending"
-        UI.expanded_row = nil
-        UI.expanded_type = nil
-        UI._cursor_repo = nil
-        UI.render()
-      end,
-      ["s"] = function()
-        UI.tab = "summary"
-        UI.expanded_row = nil
-        UI.expanded_type = nil
-        UI._cursor_repo = nil
-        UI.render()
-      end,
-      ["c"] = function()
-        UI.tab = "clean"
-        UI.expanded_row = nil
-        UI.expanded_type = nil
-        UI._cursor_repo = nil
-        UI.render()
-      end,
+      ["I"] = switch_tab("installed"),
+      ["P"] = switch_tab("pending"),
+      ["S"] = switch_tab("summary"),
+      ["C"] = switch_tab("clean"),
       ["q"] = function()
         UI.close()
       end,

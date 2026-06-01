@@ -307,11 +307,11 @@ Run `:Packard build <name>` to manually rebuild a plugin, or `:Packard build` to
 
 ### Dashboard Keybindings
 
-- `i`: Switch to **Installed** tab.
+- `I`: Switch to **Installed** tab.
 - `U`: Switch to **Update** tab / Check for updates.
-- `p`: Switch to **Pending** tab.
-- `s`: Switch to **Summary** (History) tab.
-- `c`: Switch to **Clean** tab.
+- `P`: Switch to **Pending** tab.
+- `S`: Switch to **Summary** (History) tab.
+- `C`: Switch to **Clean** tab.
 - `?`: Show help overlay.
 - `j/k`: Navigate list.
 - `<CR>`: Show commit log inline (Installed/Pending tabs).

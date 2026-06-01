@@ -180,11 +180,11 @@ function UI._do_render()
   local lines = {}
   table.insert(lines, "") -- 1. empty line at top
   local tabs = {
-    { id = "installed", label = "Installed", key = "i" },
+    { id = "installed", label = "Installed", key = "I" },
     { id = "update", label = "Update", key = "U" },
-    { id = "pending", label = "Pending", key = "p" },
-    { id = "summary", label = "Summary", key = "s" },
-    { id = "clean", label = "Clean", key = "c" },
+    { id = "pending", label = "Pending", key = "P" },
+    { id = "summary", label = "Summary", key = "S" },
+    { id = "clean", label = "Clean", key = "C" },
     { id = "help", label = "Help", key = "?" },
   }
 
