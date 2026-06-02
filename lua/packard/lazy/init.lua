@@ -83,7 +83,7 @@ function M.setup_lazy_load(plugins, load_fn)
   -- This matches lazy.nvim: keys = function() local r = require("plugin") ... end
   -- resolves without sourcing plugin/, ftdetect/, colors/, or syntax/ files.
   for _, plugin in ipairs(plugins) do
-    if not plugin._cond and not plugin.is_local then
+    if not plugin._cond then
       local lua_dir = Utils.get_plugin_path(plugin) .. "/lua"
       package.path = lua_dir .. "/?.lua;" .. lua_dir .. "/?/init.lua;" .. package.path
     end

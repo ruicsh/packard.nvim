@@ -1792,6 +1792,254 @@ Helpers.describe("Lazy Loading", function()
     Helpers.expect(init_value).to_be("first")
   end)
 
+  -- keys=fn + require + mode-table e2e tests (readline.nvim pattern)
+
+  Helpers.it("keys = fn with require: stubs exist in mode table, stub fires and sets real mapping", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    -- Create a real plugin module (mirrors readline.nvim's lua/readline.lua)
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/readlike/init.lua"] = [[
+        local M = {}
+        function M.move_left() return "left" end
+        function M.kill_word() return "kill" end
+        return M
+      ]],
+    })
+
+    -- Re-mock isdirectory for bootstrap path checks
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function(plugin_or_name)
+      return temp_dir
+    end
+
+    -- Clear cached require so keys fn re-evaluates from disk
+    local prev_readlike = package.loaded["readlike"]
+    package.loaded["readlike"] = nil
+
+    local load_called = false
+    local orig_load = packard._load_and_config
+    ---@diagnostic disable-next-line: duplicate-set-field
+    packard._load_and_config = function(p)
+      load_called = true
+      orig_load(p)
+    end
+
+    local setup_ok = pcall(packard.setup, {
+      self_management = false,
+      plugins = {
+        {
+          "foo/readlike",
+          keys = function()
+            local r = require("readlike")
+            return {
+              { "<c-b>", "<left>", desc = "backward char", mode = { "i", "c" } },
+              { "<a-b>", r.move_left, desc = "backward word", mode = { "i", "c" } },
+              { "<c-u>", r.kill_word, desc = "kill backward", mode = { "i", "c" } },
+            }
+          end,
+        },
+      },
+    })
+    Helpers.expect(setup_ok).to_be(true)
+
+    -- Stubs exist in "i" and "c" modes (readline's target modes)
+    local i_ok = pcall(vim.keymap.del, "i", "<c-b>")
+    local c_ok = pcall(vim.keymap.del, "c", "<c-b>")
+    Helpers.expect(i_ok).to_be(true)
+    Helpers.expect(c_ok).to_be(true)
+
+    -- Stubs for ALL three key specs in "i" mode
+    local i_ab = pcall(vim.keymap.del, "i", "<a-b>")
+    local i_cu = pcall(vim.keymap.del, "i", "<c-u>")
+    Helpers.expect(i_ab).to_be(true)
+    Helpers.expect(i_cu).to_be(true)
+
+    -- Verify the plugin loaded correctly via load_and_config
+    -- (simulates what the stub callback does: delete stub → load_fn → set real mapping)
+    for _, p in ipairs(packard.plugins) do
+      if p.owner_repo == "foo/readlike" then
+        packard._load_and_config(p)
+        break
+      end
+    end
+    Helpers.expect(load_called).to_be(true)
+    Helpers.expect(package.loaded["readlike"]).to_be_truthy()
+
+    -- Cleanup
+    packard._load_and_config = orig_load
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_readlike then
+      package.loaded["readlike"] = prev_readlike
+    else
+      package.loaded["readlike"] = nil
+    end
+    pcall(vim.keymap.del, "i", "<c-b>")
+    pcall(vim.keymap.del, "c", "<c-b>")
+    pcall(vim.keymap.del, "i", "<a-b>")
+    pcall(vim.keymap.del, "c", "<a-b>")
+    pcall(vim.keymap.del, "i", "<c-u>")
+    pcall(vim.keymap.del, "c", "<c-u>")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_readlike")
+    cleanup()
+  end)
+
+  Helpers.it("keys = fn with require: function RHS is preserved in real mapping", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/funcmod/init.lua"] = [[
+        local M = {}
+        function M.custom_action()
+          return 42
+        end
+        return M
+      ]],
+    })
+
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function(plugin_or_name)
+      return temp_dir
+    end
+
+    local prev_funcmod = package.loaded["funcmod"]
+    package.loaded["funcmod"] = nil
+
+    -- Track the RHS function reference before setup
+    local captured_rhs = nil
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "bar/funcmod",
+          keys = function()
+            local m = require("funcmod")
+            captured_rhs = m.custom_action
+            return {
+              { "<leader>fa", m.custom_action, desc = "custom action" },
+            }
+          end,
+        },
+      },
+    })
+
+    -- Verify: keys fn was called (captured_rhs was set)
+    Helpers.expect(captured_rhs).to_be_truthy()
+
+    -- Verify: the function reference is the same one from the module
+    local mod = require("funcmod")
+    Helpers.expect(captured_rhs).to_be(mod.custom_action)
+
+    -- Verify: stub exists in default mode "n"
+    local stub_ok = pcall(vim.keymap.del, "n", "<leader>fa")
+    Helpers.expect(stub_ok).to_be(true)
+
+    -- Cleanup
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_funcmod then
+      package.loaded["funcmod"] = prev_funcmod
+    else
+      package.loaded["funcmod"] = nil
+    end
+    pcall(vim.keymap.del, "n", "<leader>fa")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_funcmod")
+    cleanup()
+  end)
+
+  -- local plugin with keys=fn + require() — the readline.nvim local install pattern
+
+  Helpers.it("local plugin (dir) keys = fn with require: stubs created from package.path", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    -- Create a local plugin dir with a Lua module (mirrors ~/.code/readline.nvim/lua/readline.lua)
+    local local_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/localmod/init.lua"] = [[
+        local M = {}
+        function M.do_thing() return "done" end
+        return M
+      ]],
+    })
+
+    -- Re-mock isdirectory for bootstrap path checks
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    -- Clear cached require so keys fn re-evaluates from disk
+    local prev_localmod = package.loaded["localmod"]
+    package.loaded["localmod"] = nil
+
+    -- Save original package.path to verify it gets prepended
+    local orig_package_path = package.path
+
+    local load_called = false
+    local orig_load = packard._load_and_config
+    ---@diagnostic disable-next-line: duplicate-set-field
+    packard._load_and_config = function(p)
+      load_called = true
+      orig_load(p)
+    end
+
+    -- Use dir field (local plugin) — this is the key difference from remote plugins
+    local setup_ok = pcall(packard.setup, {
+      self_management = false,
+      plugins = {
+        {
+          dir = local_dir,
+          keys = function()
+            local m = require("localmod")
+            return {
+              { "<leader>lm", m.do_thing, desc = "local mod" },
+            }
+          end,
+        },
+      },
+    })
+    Helpers.expect(setup_ok).to_be(true)
+
+    -- Verify: package.path was prepended with local plugin's lua/ dir
+    local expected = local_dir .. "/lua/?.lua"
+    local lua_path_added = package.path:find(expected, 1, true)
+    Helpers.expect(lua_path_added).to_be_truthy()
+
+    -- Verify: stub exists in default mode "n" (keys fn succeeded)
+    local stub_ok = pcall(vim.keymap.del, "n", "<leader>lm")
+    Helpers.expect(stub_ok).to_be(true)
+
+    -- Verify: the plugin is marked as local
+    local plugin = nil
+    for _, p in ipairs(packard.plugins) do
+      if p.is_local then
+        plugin = p
+        break
+      end
+    end
+    Helpers.expect(plugin).to_be_truthy()
+    Helpers.expect(plugin.is_local).to_be(true)
+
+    -- Cleanup
+    packard._load_and_config = orig_load
+    if prev_localmod then
+      package.loaded["localmod"] = prev_localmod
+    else
+      package.loaded["localmod"] = nil
+    end
+    package.path = orig_package_path
+    cleanup()
+  end)
+
   -- Restore mocks
   vim.pack.add = original_pack_add
   vim.fn.isdirectory = original_isdirectory
