@@ -276,9 +276,15 @@ Helpers.describe("End-to-end flow", function()
 
     vim.notify = original_notify
 
-    -- Should have one error notification
-    Helpers.expect(#notifications).to_be(1)
-    local n = notifications[1]
+    -- Filter only ERROR-level notifications (debug instrumentation adds INFO/WARN)
+    local error_notifications = {}
+    for _, n in ipairs(notifications) do
+      if n.level == vim.log.levels.ERROR then
+        table.insert(error_notifications, n)
+      end
+    end
+    Helpers.expect(#error_notifications).to_be(1)
+    local n = error_notifications[1]
     Helpers.expect(n.level).to_be(vim.log.levels.ERROR)
 
     -- Should contain the specific error message for repo (auth error)

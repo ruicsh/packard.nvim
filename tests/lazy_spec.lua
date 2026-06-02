@@ -1107,10 +1107,10 @@ Helpers.describe("Lazy Loading", function()
       end,
     }
 
-    local notified = nil
+    local notifications = {}
     local original_notify = vim.notify
     vim.notify = function(msg, level)
-      notified = msg
+      table.insert(notifications, { msg = msg, level = level })
     end
 
     packard.setup({
