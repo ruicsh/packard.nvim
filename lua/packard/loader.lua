@@ -59,11 +59,11 @@ function Loader.load_file(filepath, modname)
       for _, s in ipairs(result) do
         table.insert(specs, s)
       end
-    elseif result[1] ~= nil then
-      -- Single spec
+    elseif result[1] ~= nil or result.dir ~= nil then
+      -- Single spec (either [1] source string, or dir-only local plugin)
       table.insert(specs, result)
     end
-    -- If table is empty or has no [1], we just skip it (nil return case)
+    -- If table is empty, we just skip it (nil return case)
   elseif result ~= nil then
     table.insert(warnings, string.format("%s: returned %s, expected table", filepath, type(result)))
   end

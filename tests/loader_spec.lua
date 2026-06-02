@@ -221,6 +221,26 @@ describe("Spec Loader", function()
     cleanup()
   end)
 
+  it("should load dir-only spec from file", function()
+    local files = {
+      ["local_plugin.lua"] = [[return { dir = "/tmp/test-dir-plugin" }]],
+    }
+    local dir, cleanup = helpers.with_temp_dir(files)
+
+    packard.setup({
+      self_management = false,
+      specs_dir = dir,
+    })
+
+    expect(#packard.plugins).to_be(1)
+    expect(packard.plugins[1].name).to_be("test-dir-plugin")
+    expect(packard.plugins[1].dir).to_be("/tmp/test-dir-plugin")
+    expect(packard.plugins[1].is_local).to_be(true)
+    expect(packard.plugins[1].owner_repo).to_be("/tmp/test-dir-plugin")
+
+    cleanup()
+  end)
+
   it("should report load errors via notify", function()
     local files = {
       ["bad.lua"] = [[this is not valid lua]],
