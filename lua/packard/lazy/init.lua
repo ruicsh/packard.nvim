@@ -6,6 +6,14 @@ local Utils = require("packard.utils")
 
 local M = {}
 
+M._debug = false
+local function _debug_msg(fmt, ...)
+  if not M._debug then
+    return
+  end
+  vim.api.nvim_echo({ { string.format(fmt, ...), "None" } }, true, {})
+end
+
 ---Source files from a specific directory (not all rtp entries).
 ---This matches :packadd behavior which sources plugin/ and ftdetect/ files
 ---for the specific plugin only, not from the entire rtp.
@@ -24,10 +32,18 @@ end
 ---@param plugin table NormalizedPlugin
 ---@param plugins table All plugins (for dependency resolution)
 function M.load_and_config(plugin, plugins)
+  _debug_msg(
+    "[packard] load_and_config called for '%s' (is_local=%s, name=%s)",
+    plugin.owner_repo,
+    tostring(plugin.is_local),
+    plugin.name
+  )
   if plugin._cond then
+    _debug_msg("[packard] load_and_config: '%s' is _cond, skipping", plugin.name)
     return
   end
   if package.loaded["packard.plugins." .. plugin.name] then
+    _debug_msg("[packard] load_and_config: '%s' already loaded, skipping", plugin.name)
     return
   end
   package.loaded["packard.plugins." .. plugin.name] = true
@@ -48,6 +64,7 @@ function M.load_and_config(plugin, plugins)
 
   -- Load the plugin code
   if plugin.is_local then
+    _debug_msg("[packard] load_and_config: local plugin '%s' — prepending rtp with '%s'", plugin.name, plugin.dir)
     -- Local plugins are outside packpath, so add dir to rtp directly
     vim.opt.rtp:prepend(plugin.dir)
     -- Source plugin/ and ftdetect/ files (matching :packadd behavior).
@@ -60,6 +77,7 @@ function M.load_and_config(plugin, plugins)
     -- Matches :packadd behavior which runs filetype detect after sourcing ftdetect/.
     pcall(vim.cmd, "filetype detect")
   else
+    _debug_msg("[packard] load_and_config: remote plugin '%s' — calling packadd", plugin.name)
     -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
     pcall(vim.cmd.packadd, plugin.name)
   end
@@ -104,12 +122,19 @@ function M.setup_lazy_load(plugins, load_fn)
   -- (keys, cmd, event, ft) can require() the plugin's main module at setup time.
   -- This matches lazy.nvim: keys = function() local r = require("plugin") ... end
   -- resolves without sourcing plugin/, ftdetect/, colors/, or syntax/ files.
+  local prepended_paths = {}
   for _, plugin in ipairs(plugins) do
     if not plugin._cond then
       local lua_dir = Utils.get_plugin_path(plugin) .. "/lua"
+      table.insert(prepended_paths, string.format("%s (is_local=%s)", lua_dir, tostring(plugin.is_local)))
       package.path = lua_dir .. "/?.lua;" .. lua_dir .. "/?/init.lua;" .. package.path
     end
   end
+  _debug_msg(
+    "[packard] setup_lazy_load: prepended %d plugin lua/ dirs to package.path\n%s",
+    #prepended_paths,
+    table.concat(prepended_paths, "\n")
+  )
 
   for _, plugin in ipairs(plugins) do
     -- Shadow the loop variable so closures capture the per-iteration value,
@@ -123,13 +148,21 @@ function M.setup_lazy_load(plugins, load_fn)
         -- Resolve function: call it (pcall) and use its return value
         local resolved = plugin.keys
         if type(resolved) == "function" then
+          _debug_msg(
+            "[packard] resolving keys fn for '%s' (is_local=%s, dir=%s)",
+            plugin.name,
+            tostring(plugin.is_local),
+            plugin.dir or "(none)"
+          )
           local ok, result = pcall(resolved)
           if ok then
             resolved = result
+            local count = type(resolved) == "table" and #resolved or 1
+            _debug_msg("[packard] keys fn OK for '%s': %d entry(ies)", plugin.name, count)
           else
             resolved = nil
             vim.notify(
-              string.format("packard: keys function error for '%s': %s", plugin.name, result),
+              string.format("[packard] keys function ERROR for '%s': %s", plugin.name, result),
               vim.log.levels.WARN
             )
           end
@@ -204,22 +237,55 @@ function M.setup_lazy_load(plugins, load_fn)
               local capture_rhs = rhs
               local capture_opts = real_map_opts
 
+              -- Log before setting the stub
+              local mode_str = type(capture_mode) == "table" and table.concat(capture_mode, ",") or capture_mode
+              _debug_msg(
+                "[packard] creating stub keymap: mode=%s  lhs=%s  rhs=%s  plugin=%s",
+                mode_str,
+                capture_lhs,
+                tostring(capture_rhs),
+                plugin.name
+              )
+
               vim.keymap.set(capture_mode, capture_lhs, function()
-                -- Delete the stub
-                pcall(vim.keymap.del, capture_mode, capture_lhs)
+                _debug_msg(
+                  "[packard] stub FIRED: lhs=%s  mode=%s  plugin=%s  rhs=%s",
+                  capture_lhs,
+                  mode_str,
+                  plugin.name,
+                  tostring(capture_rhs)
+                )
+                -- Normalize mode to a list (mode tables don't work with vim.keymap.del)
+                local normalized_modes = type(capture_mode) == "table" and capture_mode or { capture_mode }
+                -- Delete the stub in each mode
+                for _, m in ipairs(normalized_modes) do
+                  pcall(vim.keymap.del, m, capture_lhs)
+                end
+                _debug_msg("[packard] stub deleted: lhs=%s  mode=%s", capture_lhs, mode_str)
                 -- Load the plugin
                 load_fn(plugin)
+                _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
                 -- If user provided a RHS, set the real mapping and trigger it
                 if capture_rhs then
-                  vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
+                  for _, m in ipairs(normalized_modes) do
+                    vim.keymap.set(m, capture_lhs, capture_rhs, capture_opts)
+                  end
+                  _debug_msg(
+                    "[packard] real mapping set: lhs=%s  mode=%s  rhs=%s",
+                    capture_lhs,
+                    mode_str,
+                    tostring(capture_rhs)
+                  )
                   -- Replay the keys
                   local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
                   vim.api.nvim_feedkeys(feed, "m", false)
+                  _debug_msg("[packard] replayed keys for: %s", capture_lhs)
                 else
                   -- Load-only trigger, just replay the original keys
                   -- which might now be mapped by the plugin itself
                   local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
                   vim.api.nvim_feedkeys(feed, "m", false)
+                  _debug_msg("[packard] replayed keys (no rhs) for: %s", capture_lhs)
                 end
               end, { desc = string.format("packard: load %s", plugin.name) })
             end

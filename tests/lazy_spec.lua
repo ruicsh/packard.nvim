@@ -1889,6 +1889,76 @@ Helpers.describe("Lazy Loading", function()
     cleanup()
   end)
 
+  Helpers.it("keys = fn with require: stub fires in insert mode via feedkeys, no infinite loop", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/readlike/init.lua"] = [[
+        local M = {}
+        function M.move_left() return "left" end
+        return M
+      ]],
+    })
+
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function(plugin_or_name)
+      return temp_dir
+    end
+
+    local prev_readlike = package.loaded["readlike"]
+    package.loaded["readlike"] = nil
+
+    local load_called = false
+    local orig_load = packard._load_and_config
+    ---@diagnostic disable-next-line: duplicate-set-field
+    packard._load_and_config = function(p)
+      load_called = true
+      orig_load(p)
+    end
+
+    local setup_ok = pcall(packard.setup, {
+      self_management = false,
+      plugins = {
+        {
+          "foo/readlike",
+          keys = function()
+            local r = require("readlike")
+            return {
+              { "<c-b>", "<left>", desc = "backward char", mode = { "i", "c" } },
+            }
+          end,
+        },
+      },
+    })
+    Helpers.expect(setup_ok).to_be(true)
+
+    -- Fire the stub by entering insert mode then pressing the trigger key.
+    -- The "x" flag processes keys immediately in headless mode.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<c-b>", true, false, true), "x", false)
+
+    -- Plugin should have been loaded (stub callback ran, load_fn called)
+    Helpers.expect(load_called).to_be(true)
+    Helpers.expect(package.loaded["readlike"]).to_be_truthy()
+
+    -- Cleanup
+    packard._load_and_config = orig_load
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_readlike then
+      package.loaded["readlike"] = prev_readlike
+    else
+      package.loaded["readlike"] = nil
+    end
+    pcall(vim.keymap.del, "i", "<c-b>")
+    pcall(vim.keymap.del, "c", "<c-b>")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_readlike")
+    cleanup()
+  end)
+
   Helpers.it("keys = fn with require: function RHS is preserved in real mapping", function()
     -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
     vim.fn.isdirectory = original_isdirectory
