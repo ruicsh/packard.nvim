@@ -3,6 +3,7 @@
 ---main setup() entrypoint that wires everything together.
 
 local Cooldown = require("packard.cooldown")
+local Lazy = require("packard.lazy")
 local Loader = require("packard.loader")
 local Parser = require("packard.parser")
 local UI = require("packard.ui")
@@ -157,6 +158,7 @@ function M.setup(opts, ctx)
     specs_dir = opts.specs_dir,
     ai_review = opts.ai_review,
     highlights = opts.highlights,
+    debug = opts.debug,
   }
 
   -- T-1.3.2: Include packard itself if not disabled
@@ -307,6 +309,10 @@ function M.setup(opts, ctx)
 
   -- Run init() functions at startup, before any plugin code loads
   M.run_init_functions(ctx.plugins)
+
+  -- Set debug-mode flags before execution
+  Lazy._debug = opts.debug or false
+  Utils._debug = opts.debug or false
 
   ctx._bootstrap()
   ctx._setup_lazy_load()

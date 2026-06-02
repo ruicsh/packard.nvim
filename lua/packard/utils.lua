@@ -1,5 +1,13 @@
 local Utils = {}
 
+Utils._debug = false
+local function _debug_msg(fmt, ...)
+  if not Utils._debug then
+    return
+  end
+  vim.api.nvim_echo({ { string.format(fmt, ...), "None" } }, true, {})
+end
+
 ---Normalize a filesystem path: expand ~, resolve relative paths to absolute,
 ---convert backslashes, deduplicate slashes, strip trailing slash.
 ---Matches lazy.nvim's Util.norm behaviour (uses fnamemodify for absolute path).
@@ -37,10 +45,14 @@ end
 ---@return string
 function Utils.get_plugin_path(plugin_or_name)
   if type(plugin_or_name) == "table" and plugin_or_name.dir then
-    return plugin_or_name.dir
+    local result = plugin_or_name.dir
+    _debug_msg("[packard] get_plugin_path: local plugin '%s' -> %s", plugin_or_name.name or "(unnamed)", result)
+    return result
   end
   local name = type(plugin_or_name) == "table" and plugin_or_name.name or plugin_or_name
-  return vim.fs.joinpath(vim.fn.stdpath("data"), "site", "pack", "core", "opt", name)
+  local result = vim.fs.joinpath(vim.fn.stdpath("data"), "site", "pack", "core", "opt", name)
+  _debug_msg("[packard] get_plugin_path: remote plugin '%s' -> %s", name, result)
+  return result
 end
 
 ---Convert Vim-style control character notation (^X) to actual control characters

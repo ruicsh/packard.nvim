@@ -1125,9 +1125,15 @@ Helpers.describe("Lazy Loading", function()
       },
     })
 
-    -- Should have notified about the error
-    Helpers.expect(notified).to_be_truthy()
-    Helpers.expect(notified:match("opts function error")).to_be_truthy()
+    -- Should have notified about the error (search all notifications for the opts error)
+    local found = false
+    for _, n in ipairs(notifications) do
+      if n.msg:match("opts function error") then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be(true)
     -- setup() should still be called with empty opts (graceful degradation)
     Helpers.expect(setup_opts).to_be_truthy()
     Helpers.expect(type(setup_opts)).to_be("table")
@@ -2152,6 +2158,157 @@ Helpers.describe("Lazy Loading", function()
     -- Cleanup
     vim.g._local_plugin_sourced = nil
     vim.g._local_ftdetect_sourced = nil
+    cleanup()
+  end)
+
+  Helpers.it("debug = true emits lazy-load tracing", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/readlike/init.lua"] = [[
+        local M = {}
+        function M.move_left() return "left" end
+        return M
+      ]],
+    })
+
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function(plugin_or_name)
+      return temp_dir
+    end
+
+    local prev_readlike = package.loaded["readlike"]
+    package.loaded["readlike"] = nil
+
+    -- Mock nvim_echo to capture debug output
+    local echo_calls = {}
+    local orig_echo = vim.api.nvim_echo
+    vim.api.nvim_echo = function(chunks)
+      if chunks and chunks[1] then
+        table.insert(echo_calls, chunks[1][1])
+      end
+    end
+
+    local setup_ok = pcall(packard.setup, {
+      self_management = false,
+      debug = true,
+      plugins = {
+        {
+          "foo/readlike",
+          keys = function()
+            local r = require("readlike")
+            return {
+              { "<c-b>", "<left>", desc = "backward char", mode = { "i", "c" } },
+            }
+          end,
+        },
+      },
+    })
+    Helpers.expect(setup_ok).to_be(true)
+
+    -- Restore nvim_echo before assertions (so failures don't break subsequent tests)
+    vim.api.nvim_echo = orig_echo
+
+    -- Check that debug messages were emitted
+    local has_create = false
+    local has_keys = false
+    for _, msg in ipairs(echo_calls) do
+      if msg:find("%[packard%] creating stub keymap") then
+        has_create = true
+      end
+      if msg:find("%[packard%] keys fn OK") then
+        has_keys = true
+      end
+    end
+    Helpers.expect(has_create).to_be(true)
+    Helpers.expect(has_keys).to_be(true)
+
+    -- Cleanup
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_readlike then
+      package.loaded["readlike"] = prev_readlike
+    else
+      package.loaded["readlike"] = nil
+    end
+    pcall(vim.keymap.del, "i", "<c-b>")
+    pcall(vim.keymap.del, "c", "<c-b>")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_readlike")
+    cleanup()
+  end)
+
+  Helpers.it("debug = false suppresses lazy-load tracing", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/readlike/init.lua"] = [[
+        local M = {}
+        function M.move_left() return "left" end
+        return M
+      ]],
+    })
+
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function(plugin_or_name)
+      return temp_dir
+    end
+
+    local prev_readlike = package.loaded["readlike"]
+    package.loaded["readlike"] = nil
+
+    -- Mock nvim_echo to capture any output
+    local echo_calls = {}
+    local orig_echo = vim.api.nvim_echo
+    vim.api.nvim_echo = function(chunks)
+      if chunks and chunks[1] then
+        table.insert(echo_calls, chunks[1][1])
+      end
+    end
+
+    local setup_ok = pcall(packard.setup, {
+      self_management = false,
+      -- debug defaults to false (omitted)
+      plugins = {
+        {
+          "foo/readlike",
+          keys = function()
+            local r = require("readlike")
+            return {
+              { "<c-b>", "<left>", desc = "backward char", mode = { "i", "c" } },
+            }
+          end,
+        },
+      },
+    })
+    Helpers.expect(setup_ok).to_be(true)
+
+    -- Restore nvim_echo before assertions
+    vim.api.nvim_echo = orig_echo
+
+    -- No [packard]-prefixed debug messages should appear
+    for _, msg in ipairs(echo_calls) do
+      Helpers.expect(msg:find("%[packard%]") == nil).to_be(true)
+    end
+
+    -- Cleanup
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_readlike then
+      package.loaded["readlike"] = prev_readlike
+    else
+      package.loaded["readlike"] = nil
+    end
+    pcall(vim.keymap.del, "i", "<c-b>")
+    pcall(vim.keymap.del, "c", "<c-b>")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_readlike")
     cleanup()
   end)
 

@@ -48,6 +48,7 @@ require("packard").setup({
     -- ... more plugins
   },
   -- Optional settings:
+  -- debug = true,              -- Enable verbose lazy-load tracing to :messages
   -- notifications = true,      -- Notify on startup if plugins are ready for review
   -- self_management = true,    -- Automatically include packard.nvim in the plugin list
   ai_review = {
