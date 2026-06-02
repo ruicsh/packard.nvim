@@ -6,6 +6,19 @@ local Utils = require("packard.utils")
 
 local M = {}
 
+---Source files from a specific directory (not all rtp entries).
+---This matches :packadd behavior which sources plugin/ and ftdetect/ files
+---for the specific plugin only, not from the entire rtp.
+---@param dir string The plugin directory root
+---@param pattern string Glob pattern relative to dir (e.g., "plugin/**/*.lua")
+local function source_local_glob(dir, pattern)
+  -- "r" flag enables recursive matching with **; list=true returns a Lua table
+  local paths = vim.fn.globpath(dir, pattern, "r", true)
+  for _, filepath in ipairs(paths) do
+    pcall(vim.cmd.source, filepath)
+  end
+end
+
 ---@private
 ---Load and configure a single plugin.
 ---@param plugin table NormalizedPlugin
@@ -37,6 +50,15 @@ function M.load_and_config(plugin, plugins)
   if plugin.is_local then
     -- Local plugins are outside packpath, so add dir to rtp directly
     vim.opt.rtp:prepend(plugin.dir)
+    -- Source plugin/ and ftdetect/ files (matching :packadd behavior).
+    -- globpath only searches the specific directory, not all rtp entries.
+    source_local_glob(plugin.dir, "plugin/**/*.vim")
+    source_local_glob(plugin.dir, "plugin/**/*.lua")
+    source_local_glob(plugin.dir, "ftdetect/**/*.vim")
+    source_local_glob(plugin.dir, "ftdetect/**/*.lua")
+    -- Re-trigger filetype detection so ftdetect files apply to open buffers.
+    -- Matches :packadd behavior which runs filetype detect after sourcing ftdetect/.
+    pcall(vim.cmd, "filetype detect")
   else
     -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
     pcall(vim.cmd.packadd, plugin.name)

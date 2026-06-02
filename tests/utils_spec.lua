@@ -1,0 +1,45 @@
+local Helpers = require("tests.helpers")
+local Utils = require("packard.utils")
+
+Helpers.describe("Utils.norm", function()
+  Helpers.it("expands tilde to home directory", function()
+    local result = Utils.norm("~/projects/foo.nvim")
+    Helpers.expect(result:sub(1, 1) == "/").to_be_truthy()
+    Helpers.expect(string.find(result, "projects/foo.nvim", 1, true) ~= nil).to_be_truthy()
+  end)
+
+  Helpers.it("resolves relative paths to absolute", function()
+    local result = Utils.norm("./my-plugin")
+    Helpers.expect(result:sub(1, 1) == "/").to_be_truthy()
+    Helpers.expect(string.find(result, "my-plugin", 1, true) ~= nil).to_be_truthy()
+  end)
+
+  Helpers.it("resolves parent-relative paths to absolute", function()
+    local result = Utils.norm("../my-plugin")
+    Helpers.expect(result:sub(1, 1) == "/").to_be_truthy()
+    Helpers.expect(string.find(result, "my-plugin", 1, true) ~= nil).to_be_truthy()
+  end)
+
+  Helpers.it("keeps absolute paths unchanged", function()
+    local result = Utils.norm("/usr/local/my-plugin")
+    Helpers.expect(result).to_be("/usr/local/my-plugin")
+  end)
+
+  Helpers.it("strips trailing slash", function()
+    local result = Utils.norm("/usr/local/my-plugin/")
+    Helpers.expect(result).to_be("/usr/local/my-plugin")
+  end)
+
+  Helpers.it("deduplicates internal slashes", function()
+    local result = Utils.norm("/usr//local///my-plugin")
+    Helpers.expect(result).to_be("/usr/local/my-plugin")
+  end)
+
+  Helpers.it("resolves bare names to absolute", function()
+    local result = Utils.norm("my-plugin")
+    Helpers.expect(result:sub(1, 1) == "/").to_be_truthy()
+    Helpers.expect(string.find(result, "my-plugin", 1, true) ~= nil).to_be_truthy()
+  end)
+end)
+
+print("Utils tests passed!")

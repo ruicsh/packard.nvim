@@ -87,10 +87,22 @@ function Health.check()
   vim.health.start("Network")
   if #packard.plugins == 0 then
     vim.health.info("No plugins configured (skipping network check)")
-  elseif Git.check_network(packard.plugins[1].url, 2000) then
-    vim.health.ok("Network available")
   else
-    vim.health.warn("Network unavailable")
+    -- Find the first remote plugin (local plugins have url = nil)
+    local first_remote_url
+    for _, plugin in ipairs(packard.plugins) do
+      if plugin.url then
+        first_remote_url = plugin.url
+        break
+      end
+    end
+    if not first_remote_url then
+      vim.health.info("No remote plugins found (skipping network check)")
+    elseif Git.check_network(first_remote_url, 2000) then
+      vim.health.ok("Network available")
+    else
+      vim.health.warn("Network unavailable")
+    end
   end
 
   -- Plugins

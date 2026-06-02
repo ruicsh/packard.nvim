@@ -2040,6 +2040,51 @@ Helpers.describe("Lazy Loading", function()
     cleanup()
   end)
 
+  -- Local plugin file sourcing: plugin/ and ftdetect/ should be sourced
+  Helpers.it("local plugin (dir) sources plugin/ and ftdetect/ files", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    -- Create a local plugin dir with plugin/ and ftdetect/ files
+    local local_dir, cleanup = Helpers.with_temp_dir({
+      ["plugin/init.lua"] = [[vim.g._local_plugin_sourced = true]],
+      ["ftdetect/test.lua"] = [[vim.g._local_ftdetect_sourced = true]],
+      ["lua/localplug/init.lua"] = [[local M = {} function M.setup() end return M]],
+    })
+
+    -- Re-mock isdirectory for bootstrap path checks
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    -- Reset globals
+    vim.g._local_plugin_sourced = false
+    vim.g._local_ftdetect_sourced = false
+
+    local setup_ok = pcall(packard.setup, {
+      self_management = false,
+      plugins = {
+        {
+          dir = local_dir,
+          name = "localplug",
+          lazy = false,
+        },
+      },
+    })
+    Helpers.expect(setup_ok).to_be(true)
+
+    -- Verify: plugin/ file was sourced
+    Helpers.expect(vim.g._local_plugin_sourced).to_be(true)
+
+    -- Verify: ftdetect/ file was sourced
+    Helpers.expect(vim.g._local_ftdetect_sourced).to_be(true)
+
+    -- Cleanup
+    vim.g._local_plugin_sourced = nil
+    vim.g._local_ftdetect_sourced = nil
+    cleanup()
+  end)
+
   -- Restore mocks
   vim.pack.add = original_pack_add
   vim.fn.isdirectory = original_isdirectory

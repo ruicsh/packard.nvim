@@ -1,7 +1,8 @@
 local Utils = {}
 
----Normalize a filesystem path: expand ~, convert backslashes, deduplicate
----slashes, strip trailing slash.  Matches lazy.nvim's Util.norm behaviour.
+---Normalize a filesystem path: expand ~, resolve relative paths to absolute,
+---convert backslashes, deduplicate slashes, strip trailing slash.
+---Matches lazy.nvim's Util.norm behaviour (uses fnamemodify for absolute path).
 ---@param path string
 ---@return string
 function Utils.norm(path)
@@ -12,6 +13,8 @@ function Utils.norm(path)
     end
     path = home .. path:sub(2)
   end
+  -- fnamemodify(":p") resolves relative paths (., .., bare names) to absolute; matches lazy.nvim.
+  path = vim.fn.fnamemodify(path, ":p")
   path = path:gsub("\\", "/"):gsub("/+", "/")
   return path:sub(-1) == "/" and path:sub(1, -2) or path
 end
