@@ -65,21 +65,22 @@ require("packard").setup({
 
 Packard supports standard `lazy.nvim`-style lazy-loading fields:
 
-| Field | Type | Description |
-|---|---|---|---|
-| `dir` | `string` | Use a local filesystem directory for the plugin (no git remote). Plugin must already exist on disk. No clone/fetch/checkout operations occur. The plugin name is derived from the last path component. |
-| `keys` | `string\|string[]\|table\|function` | Load on keymap(s). Supports simple strings, full mapping tables, or a function that returns key specs. Functions may call `require("<plugin_module>")` — packard pre-populates `package.path` with each plugin's `lua/` dir at setup time so the module resolves without sourcing the plugin's `plugin/` or `ftdetect/` files. |
-| `cmd` | `string\|string[]` | Load on command(s). |
-| `event` | `string\|string[]` | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`. |
-| `ft` | `string\|string[]` | Load on filetype(s). |
-| `lazy` | `boolean` | If `false`, load immediately on startup (default: `true`). |
-| `config` | `function\|boolean` | Function called after plugin loads: `function(plugin, opts)`. Set to `true` to auto-call `require(MAIN).setup(opts or {})` — useful for zero-config plugins. If omitted but `opts` is present, Packard auto-calls `require(MAIN).setup(opts)`. |
-| `main` | `string` | Override the auto-detected Lua module name used by `config` and `opts` auto-setup. Useful when the plugin's module name doesn't match the repo name. |
-| `init` | `function` | Function called at **startup** before the plugin loads: `function(plugin)`. Useful for setting `vim.g.*` values that VimScript plugins check at startup. Runs for all plugins regardless of `lazy` setting. |
-| `opts` | `table` or `function` | Options passed to the `config` function. If `config` is absent but `opts` is present, auto-invokes `require(MAIN).setup(opts)`. Can also be a function returning a table. |
-| `build` | `function\|string\|string[]\|false` | Post-install/update build step. Supports Lua functions, `:Commands`, `*.lua` files, shell commands, and lists. Auto-detects `build.lua` / `build/init.lua`. Set to `false` to disable. |
+| Field    | Type                                | Description                                                                                                                                                                                                                                                                                                                    |
+| -------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `dir`    | `string`                            | Use a local filesystem directory for the plugin (no git remote). Plugin must already exist on disk. No clone/fetch/checkout operations occur. The plugin name is derived from the last path component.                                                                                                                         |
+| `keys`   | `string\|string[]\|table\|function` | Load on keymap(s). Supports simple strings, full mapping tables, or a function that returns key specs. Functions may call `require("<plugin_module>")` — packard pre-populates `package.path` with each plugin's `lua/` dir at setup time so the module resolves without sourcing the plugin's `plugin/` or `ftdetect/` files. |
+| `cmd`    | `string\|string[]`                  | Load on command(s).                                                                                                                                                                                                                                                                                                            |
+| `event`  | `string\|string[]`                  | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`.                                                                                                                                                                                                                                               |
+| `ft`     | `string\|string[]`                  | Load on filetype(s).                                                                                                                                                                                                                                                                                                           |
+| `lazy`   | `boolean`                           | If `false`, load immediately on startup (default: `true`).                                                                                                                                                                                                                                                                     |
+| `config` | `function\|boolean`                 | Function called after plugin loads: `function(plugin, opts)`. Set to `true` to auto-call `require(MAIN).setup(opts or {})` — useful for zero-config plugins. If omitted but `opts` is present, Packard auto-calls `require(MAIN).setup(opts)`.                                                                                 |
+| `main`   | `string`                            | Override the auto-detected Lua module name used by `config` and `opts` auto-setup. Useful when the plugin's module name doesn't match the repo name.                                                                                                                                                                           |
+| `init`   | `function`                          | Function called at **startup** before the plugin loads: `function(plugin)`. Useful for setting `vim.g.*` values that VimScript plugins check at startup. Runs for all plugins regardless of `lazy` setting.                                                                                                                    |
+| `opts`   | `table` or `function`               | Options passed to the `config` function. If `config` is absent but `opts` is present, auto-invokes `require(MAIN).setup(opts)`. Can also be a function returning a table.                                                                                                                                                      |
+| `build`  | `function\|string\|string[]\|false` | Post-install/update build step. Supports Lua functions, `:Commands`, `*.lua` files, shell commands, and lists. Auto-detects `build.lua` / `build/init.lua`. Set to `false` to disable.                                                                                                                                         |
 
 Example:
+
 ```lua
 {
   "folke/snacks.nvim",
@@ -197,6 +198,7 @@ To use a plugin from your local filesystem (e.g., a development copy), use the `
 ```
 
 Local plugins:
+
 - **Must already exist on disk** — packard does not clone or fetch them
 - **Skip all git operations** — no clone, fetch, checkout, or clean
 - **Skip the cooldown queue** — no remote changes to review
@@ -262,12 +264,12 @@ When multiple specs for the same plugin are declared, trigger fields
 
 Packard supports various ways to pin your plugins:
 
-| Field | Example | Description |
-|---|---|---|
+| Field     | Example                       | Description                                        |
+| --------- | ----------------------------- | -------------------------------------------------- |
 | `version` | `"1.*"`, `"^2.0"`, `"~1.2.3"` | Semver range — resolves to latest matching git tag |
-| `tag` | `"v1.9.2"` | Exact tag pin |
-| `commit` | `"abc1234..."` | Exact commit SHA pin (highest priority) |
-| `branch` | `"dev"` | Track a specific branch (rolling) |
+| `tag`     | `"v1.9.2"`                    | Exact tag pin                                      |
+| `commit`  | `"abc1234..."`                | Exact commit SHA pin (highest priority)            |
+| `branch`  | `"dev"`                       | Track a specific branch (rolling)                  |
 
 **Priority:** `commit` > `tag` > `version` > `branch` > default branch HEAD.
 
@@ -277,15 +279,15 @@ Semver ranges follow [lazy.nvim](https://github.com/folke/lazy.nvim) conventions
 
 Packard supports post-install and post-update build steps, matching lazy.nvim conventions. The `build` field is executed after a plugin is first installed and after each update.
 
-| Type | Example | Description |
-|---|---|---|
-| `fun(plugin)` | `build = function(p) ... end` | Lua function called with the plugin table |
-| `":Command"` | `build = ":TSUpdate"` | Neovim command executed via `vim.cmd` |
-| `"*.lua"` | `build = "build.lua"` | Lua file loaded from the plugin directory |
-| Shell command | `build = "make"` | Run via `vim.system()` in the plugin directory |
-| List | `build = { "make", ":TSUpdate" }` | Multiple steps run sequentially |
-| Auto-detect | (no `build` field) | Uses `build.lua` or `build/init.lua` if present |
-| `false` | `build = false` | Explicitly skip build (even if `build.lua` exists) |
+| Type          | Example                           | Description                                        |
+| ------------- | --------------------------------- | -------------------------------------------------- |
+| `fun(plugin)` | `build = function(p) ... end`     | Lua function called with the plugin table          |
+| `":Command"`  | `build = ":TSUpdate"`             | Neovim command executed via `vim.cmd`              |
+| `"*.lua"`     | `build = "build.lua"`             | Lua file loaded from the plugin directory          |
+| Shell command | `build = "make"`                  | Run via `vim.system()` in the plugin directory     |
+| List          | `build = { "make", ":TSUpdate" }` | Multiple steps run sequentially                    |
+| Auto-detect   | (no `build` field)                | Uses `build.lua` or `build/init.lua` if present    |
+| `false`       | `build = false`                   | Explicitly skip build (even if `build.lua` exists) |
 
 Examples:
 
