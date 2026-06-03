@@ -1965,6 +1965,97 @@ Helpers.describe("Lazy Loading", function()
     cleanup()
   end)
 
+  Helpers.it("keys = fn with require: real mapping handles subsequent presses, no infinite loop", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/readlike/init.lua"] = [[
+        local M = {}
+        function M.move_left() return "left" end
+        return M
+      ]],
+    })
+
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function(plugin_or_name)
+      return temp_dir
+    end
+
+    local prev_readlike = package.loaded["readlike"]
+    package.loaded["readlike"] = nil
+
+    local load_count = 0
+    local orig_load = packard._load_and_config
+    ---@diagnostic disable-next-line: duplicate-set-field
+    packard._load_and_config = function(p)
+      load_count = load_count + 1
+      orig_load(p)
+    end
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/readlike",
+          keys = function()
+            local r = require("readlike")
+            return {
+              { "<c-b>", "<left>", desc = "backward char", mode = { "i", "c" } },
+            }
+          end,
+        },
+      },
+    })
+
+    -- Verify: stub exists (maparg returns a dict with a callback function before firing)
+    local stub_before = vim.fn.maparg("<c-b>", "i", false, true)
+    Helpers.expect(stub_before).to_be_truthy()
+    -- The stub is a function callback (no rhs), and expr=true is set on the stub
+    Helpers.expect(stub_before.callback).to_be_truthy()
+    Helpers.expect(stub_before.expr).to_be(1)
+
+    -- Fire the stub by entering insert mode then pressing the trigger key.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<c-b>", true, false, true), "x", false)
+
+    -- Plugin should have been loaded (stub callback ran, load_fn called once)
+    Helpers.expect(load_count).to_be(1)
+    Helpers.expect(package.loaded["readlike"]).to_be_truthy()
+
+    -- Verify: stub was replaced by the real mapping (string RHS, no callback)
+    local real_map = vim.fn.maparg("<c-b>", "i", false, true)
+    Helpers.expect(real_map).to_be_truthy()
+    Helpers.expect(real_map.rhs).to_be("<left>")
+    -- If maparg includes a callback field, it should be nil for the real mapping
+    if real_map.callback ~= nil then
+      Helpers.expect(real_map.callback).to_be_nil()
+    end
+
+    -- Fire the same key a second time — should use the real mapping, not the stub.
+    -- If the stub fired again, load_and_config would be called a second time.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<c-b>", true, false, true), "x", false)
+
+    -- load_and_config must NOT have been called again
+    Helpers.expect(load_count).to_be(1)
+
+    -- Cleanup
+    packard._load_and_config = orig_load
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_readlike then
+      package.loaded["readlike"] = prev_readlike
+    else
+      package.loaded["readlike"] = nil
+    end
+    pcall(vim.keymap.del, "i", "<c-b>")
+    pcall(vim.keymap.del, "c", "<c-b>")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_readlike")
+    cleanup()
+  end)
+
   Helpers.it("keys = fn with require: function RHS is preserved in real mapping", function()
     -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
     vim.fn.isdirectory = original_isdirectory

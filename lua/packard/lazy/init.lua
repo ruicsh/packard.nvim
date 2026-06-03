@@ -276,18 +276,19 @@ function M.setup_lazy_load(plugins, load_fn)
                     mode_str,
                     tostring(capture_rhs)
                   )
-                  -- Replay the keys
-                  local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
-                  vim.api.nvim_feedkeys(feed, "m", false)
+                  -- Replay the keys (insert at front so processed before other pending input;
+                  -- <Ignore> prefix consumes the expr context so lhs is processed as new input)
+                  local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
+                  vim.api.nvim_feedkeys(feed, "i", false)
                   _debug_msg("[packard] replayed keys for: %s", capture_lhs)
                 else
                   -- Load-only trigger, just replay the original keys
                   -- which might now be mapped by the plugin itself
-                  local feed = vim.api.nvim_replace_termcodes(capture_lhs, true, true, true)
-                  vim.api.nvim_feedkeys(feed, "m", false)
+                  local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
+                  vim.api.nvim_feedkeys(feed, "i", false)
                   _debug_msg("[packard] replayed keys (no rhs) for: %s", capture_lhs)
                 end
-              end, { desc = string.format("packard: load %s", plugin.name) })
+              end, { desc = string.format("packard: load %s", plugin.name), expr = true })
             end
           end
         end
