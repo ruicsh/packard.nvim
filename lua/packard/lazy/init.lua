@@ -276,18 +276,16 @@ function M.setup_lazy_load(plugins, load_fn)
                     mode_str,
                     tostring(capture_rhs)
                   )
-                  -- Replay the keys (insert at front so processed before other pending input;
-                  -- <Ignore> prefix consumes the expr context so lhs is processed as new input)
-                  local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
-                  vim.api.nvim_feedkeys(feed, "i", false)
-                  _debug_msg("[packard] replayed keys for: %s", capture_lhs)
-                else
-                  -- Load-only trigger, just replay the original keys
-                  -- which might now be mapped by the plugin itself
-                  local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
-                  vim.api.nvim_feedkeys(feed, "i", false)
-                  _debug_msg("[packard] replayed keys (no rhs) for: %s", capture_lhs)
                 end
+                -- Return the original keys via expr mechanism — Neovim replays them
+                -- through the mapping system. The stub has been deleted above so the
+                -- returned keys hit the real mapping (if one was set) or are processed
+                -- as normal keypresses. No nvim_feedkeys needed — expr return is the
+                -- single source of key replay, avoiding double-processing loops.
+                -- Note: capture_lhs is already in raw key form (e.g. "<c-b>") from
+                -- the spec parser, so no additional transformation is needed.
+                _debug_msg("[packard] returning keys via expr for: %s", capture_lhs)
+                return capture_lhs
               end, { desc = string.format("packard: load %s", plugin.name), expr = true })
             end
           end
