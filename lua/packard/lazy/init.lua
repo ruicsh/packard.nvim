@@ -146,10 +146,6 @@ function M.setup_lazy_load(plugins, load_fn)
     local plugin = plugin
     if not plugin._cond then
       local has_triggers = false
-      -- Re-entry guard for keymap stub callbacks. Set to true on first
-      -- invocation to prevent infinite loops when the replay of a key
-      -- re-triggers the stub before the mapping replacement propagates.
-      local plugin_loaded = false
 
       -- 1. Keys
       if plugin.keys then
@@ -273,22 +269,12 @@ function M.setup_lazy_load(plugins, load_fn)
                   tostring(capture_rhs)
                 )
 
-                -- Re-entry guard: if this stub was already fired (and its
-                -- replay re-triggered this same stub), consume the key
-                -- silently without replay. This prevents infinite loops when
-                -- mapping replacement is deferred during active mapping execution.
-                if plugin_loaded then
-                  _debug_msg("[packard] stub re-entered for '%s', consuming key", plugin.name)
-                  return
-                end
-                plugin_loaded = true
-
                 local normalized_modes = type(capture_mode) == "table" and capture_mode or { capture_mode }
 
                 -- Step 1: Delete the stub and set the real mapping (if RHS exists).
                 -- Do this BEFORE loading the plugin, matching lazy.nvim's approach.
                 for _, m in ipairs(normalized_modes) do
-                  local ok_del, err_del = pcall(vim.keymap.del, m, capture_lhs)
+                  local ok_del, err_del = pcall(vim.keymap.del, m, capture_lhs, { buffer = nil })
                   if not ok_del then
                     _debug_msg(
                       "[packard] stub del failed (may already be replaced): lhs=%s mode=%s err=%s",
