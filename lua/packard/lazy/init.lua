@@ -218,6 +218,14 @@ function M.setup_lazy_load(plugins, load_fn)
               end
             end
 
+            -- Normalize comma-separated mode string to table (e.g. "i,c" → {"i", "c"})
+            if type(mode) == "string" then
+              local parts = vim.split(mode, ",")
+              if #parts > 1 then
+                mode = parts
+              end
+            end
+
             if lhs then
               -- Build opts for the real mapping (after trigger fires)
               -- Include all non-positional, non-consumed keys from the key spec
@@ -255,17 +263,15 @@ function M.setup_lazy_load(plugins, load_fn)
                   plugin.name,
                   tostring(capture_rhs)
                 )
-                -- Normalize mode to a list (mode tables don't work with vim.keymap.del)
+                -- Normalize mode to a list for per-mode operations
                 local normalized_modes = type(capture_mode) == "table" and capture_mode or { capture_mode }
-                -- Delete the stub in each mode
-                for _, m in ipairs(normalized_modes) do
-                  pcall(vim.keymap.del, m, capture_lhs)
-                end
-                _debug_msg("[packard] stub deleted: lhs=%s  mode=%s", capture_lhs, mode_str)
-                -- Load the plugin
+                -- Load the plugin FIRST (plugin code may define additional mappings)
                 load_fn(plugin)
                 _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
-                -- If user provided a RHS, set the real mapping and trigger it
+                -- Set the real mapping BEFORE attempting stub deletion.
+                -- vim.keymap.set overwrites the expr stub, so even if deletion
+                -- fails (e.g. mapping can't be deleted while being evaluated), the
+                -- real mapping is already in place for the expr key replay.
                 if capture_rhs then
                   for _, m in ipairs(normalized_modes) do
                     vim.keymap.set(m, capture_lhs, capture_rhs, capture_opts)
@@ -277,13 +283,23 @@ function M.setup_lazy_load(plugins, load_fn)
                     tostring(capture_rhs)
                   )
                 end
+                -- Delete the stub in each mode (cleanup — real mapping already set above).
+                -- We only delete if it's still our stub (based on the description).
+                -- This avoids deleting the real mapping set above if they have the same mode/lhs.
+                for _, m in ipairs(normalized_modes) do
+                  local map = vim.fn.maparg(capture_lhs, m, false, true)
+                  if map and map.desc and map.desc == capture_opts.desc then
+                    local ok, err = pcall(vim.keymap.del, m, capture_lhs)
+                    if not ok then
+                      _debug_msg("[packard] stub del failed for mode=%s lhs=%s: %s", m, capture_lhs, tostring(err))
+                    end
+                  end
+                end
+                _debug_msg("[packard] stub processing finished: lhs=%s  mode=%s", capture_lhs, mode_str)
                 -- Return the original keys via expr mechanism — Neovim replays them
-                -- through the mapping system. The stub has been deleted above so the
-                -- returned keys hit the real mapping (if one was set) or are processed
-                -- as normal keypresses. No nvim_feedkeys needed — expr return is the
-                -- single source of key replay, avoiding double-processing loops.
-                -- Note: capture_lhs is already in raw key form (e.g. "<c-b>") from
-                -- the spec parser, so no additional transformation is needed.
+                -- through the mapping system. The real mapping has been set above so
+                -- the returned keys hit the real mapping (if one was set) or are processed
+                -- as normal keypresses.
                 _debug_msg("[packard] returning keys via expr for: %s", capture_lhs)
                 return capture_lhs
               end, { desc = string.format("packard: load %s", plugin.name), expr = true })

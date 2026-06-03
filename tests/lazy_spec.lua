@@ -2403,6 +2403,27 @@ Helpers.describe("Lazy Loading", function()
     cleanup()
   end)
 
+  Helpers.it("supports comma-separated mode strings (e.g. mode = 'i,c')", function()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/comma-modes",
+          keys = { { "<c-f>", "<right>", mode = "i,c" } },
+        },
+      },
+    })
+
+    -- Check if stub mapping exists in both modes
+    local i_ok = pcall(vim.keymap.del, "i", "<c-f>")
+    local c_ok = pcall(vim.keymap.del, "c", "<c-f>")
+    Helpers.expect(i_ok).to_be(true)
+    Helpers.expect(c_ok).to_be(true)
+
+    -- Cleanup
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_comma-modes")
+  end)
+
   -- Restore mocks
   vim.pack.add = original_pack_add
   vim.fn.isdirectory = original_isdirectory
