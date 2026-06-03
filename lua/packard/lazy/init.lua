@@ -297,13 +297,25 @@ function M.setup_lazy_load(plugins, load_fn)
                   end
                 end
                 _debug_msg("[packard] stub processing finished: lhs=%s  mode=%s", capture_lhs, mode_str)
-                -- Return the original keys via expr mechanism — Neovim replays them
-                -- through the mapping system. The real mapping has been set above so
-                -- the returned keys hit the real mapping (if one was set) or are processed
-                -- as normal keypresses.
-                _debug_msg("[packard] returning keys via expr for: %s", capture_lhs)
-                return capture_lhs
-              end, { desc = stub_desc, expr = true })
+
+                -- Replay the keypress so the intended action runs.
+                -- We avoid 'expr = true' because it causes infinite recursion when
+                -- the real mapping is set inside the callback (the return value hits
+                -- the still-active stub).
+                if capture_rhs and type(capture_rhs) == "function" then
+                  -- For function RHS, we can just call it directly.
+                  _debug_msg("[packard] calling RHS function directly for: %s", capture_lhs)
+                  capture_rhs()
+                else
+                  -- For string RHS or no RHS (where the plugin sets the mapping),
+                  -- we defer the replay until the mapping changes have propagated.
+                  _debug_msg("[packard] replaying keys via nvim_input for: %s", capture_lhs)
+                  vim.schedule(function()
+                    vim.api.nvim_input(capture_lhs)
+                  end)
+                end
+                return ""
+              end, { desc = stub_desc })
             end
           end
         end

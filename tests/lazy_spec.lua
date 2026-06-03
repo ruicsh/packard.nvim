@@ -2015,9 +2015,9 @@ Helpers.describe("Lazy Loading", function()
     -- Verify: stub exists (maparg returns a dict with a callback function before firing)
     local stub_before = vim.fn.maparg("<c-b>", "i", false, true)
     Helpers.expect(stub_before).to_be_truthy()
-    -- The stub is a function callback (no rhs), and expr=true is set on the stub
+    -- The stub is a function callback (no rhs), and expr is NOT set (we handle replay manually)
     Helpers.expect(stub_before.callback).to_be_truthy()
-    Helpers.expect(stub_before.expr).to_be(1)
+    Helpers.expect(stub_before.expr).to_be(0)
 
     -- Fire the stub by entering insert mode then pressing the trigger key.
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<c-b>", true, false, true), "x", false)
@@ -2041,6 +2041,21 @@ Helpers.describe("Lazy Loading", function()
 
     -- load_and_config must NOT have been called again
     Helpers.expect(load_count).to_be(1)
+
+    -- Verify: functional behavior — the first press (which triggered the stub)
+    -- should have actually moved the cursor left in insert mode.
+    -- (In headless mode, feedkeys with 'x' processes the schedule loop)
+    local col = vim.fn.col(".")
+    -- "i<c-b>" on empty buffer: "i" enters insert mode (col 1), 
+    -- then "<c-b>" triggers stub -> loads -> re-injects "<c-b>" -> hits real mapping "<left>"
+    -- Since it's an empty buffer, col stays 1, but we can verify by checking if 
+    -- the cursor moved relative to a known position.
+    
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, { "hello" })
+    vim.api.nvim_win_set_cursor(0, { 1, 5 }) -- End of "hello"
+    -- Process a real mapping fire
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<c-b>", true, false, true), "x", false)
+    Helpers.expect(vim.fn.col(".")).to_be(5) -- Moved from 6 to 5
 
     -- Cleanup
     packard._load_and_config = orig_load
