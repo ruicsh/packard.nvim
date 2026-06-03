@@ -255,6 +255,7 @@ function M.setup_lazy_load(plugins, load_fn)
                 plugin.name
               )
 
+              local stub_desc = string.format("packard: load %s", plugin.name)
               vim.keymap.set(capture_mode, capture_lhs, function()
                 _debug_msg(
                   "[packard] stub FIRED: lhs=%s  mode=%s  plugin=%s  rhs=%s",
@@ -268,10 +269,9 @@ function M.setup_lazy_load(plugins, load_fn)
                 -- Load the plugin FIRST (plugin code may define additional mappings)
                 load_fn(plugin)
                 _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
-                -- Set the real mapping BEFORE attempting stub deletion.
-                -- vim.keymap.set overwrites the expr stub, so even if deletion
-                -- fails (e.g. mapping can't be deleted while being evaluated), the
-                -- real mapping is already in place for the expr key replay.
+                -- Set the real mapping or delete the stub.
+                -- If we have a RHS, setting it via vim.keymap.set will overwrite the
+                -- stub mapping automatically. If we don't have a RHS, we delete the stub.
                 if capture_rhs then
                   for _, m in ipairs(normalized_modes) do
                     vim.keymap.set(m, capture_lhs, capture_rhs, capture_opts)
@@ -282,16 +282,17 @@ function M.setup_lazy_load(plugins, load_fn)
                     mode_str,
                     tostring(capture_rhs)
                   )
-                end
-                -- Delete the stub in each mode (cleanup — real mapping already set above).
-                -- We only delete if it's still our stub (based on the description).
-                -- This avoids deleting the real mapping set above if they have the same mode/lhs.
-                for _, m in ipairs(normalized_modes) do
-                  local map = vim.fn.maparg(capture_lhs, m, false, true)
-                  if map and map.desc and map.desc == capture_opts.desc then
-                    local ok, err = pcall(vim.keymap.del, m, capture_lhs)
-                    if not ok then
-                      _debug_msg("[packard] stub del failed for mode=%s lhs=%s: %s", m, capture_lhs, tostring(err))
+                else
+                  -- No RHS: just delete the stub. We only delete if it's still our stub
+                  -- (based on the description) to avoid accidentally deleting a mapping
+                  -- set by the plugin during its load.
+                  for _, m in ipairs(normalized_modes) do
+                    local map = vim.fn.maparg(capture_lhs, m, false, true)
+                    if map and map.desc and map.desc == stub_desc then
+                      local ok, err = pcall(vim.keymap.del, m, capture_lhs)
+                      if not ok then
+                        _debug_msg("[packard] stub del failed for mode=%s lhs=%s: %s", m, capture_lhs, tostring(err))
+                      end
                     end
                   end
                 end
@@ -302,7 +303,7 @@ function M.setup_lazy_load(plugins, load_fn)
                 -- as normal keypresses.
                 _debug_msg("[packard] returning keys via expr for: %s", capture_lhs)
                 return capture_lhs
-              end, { desc = string.format("packard: load %s", plugin.name), expr = true })
+              end, { desc = stub_desc, expr = true })
             end
           end
         end

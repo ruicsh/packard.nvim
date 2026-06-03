@@ -2424,6 +2424,46 @@ Helpers.describe("Lazy Loading", function()
     pcall(vim.api.nvim_del_augroup_by_name, "packard_load_comma-modes")
   end)
 
+  Helpers.it("trigger-only key (no RHS) with custom desc is deleted after firing", function()
+    local load_count = 0
+    local orig_load = packard._load_and_config
+    ---@diagnostic disable-next-line: duplicate-set-field
+    packard._load_and_config = function(p)
+      load_count = load_count + 1
+      orig_load(p)
+    end
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "foo/trigger-only",
+          keys = { { "<leader>to", desc = "My custom trigger" } },
+        },
+      },
+    })
+
+    -- Verify: stub exists
+    local stub = vim.fn.maparg("<leader>to", "n", false, true)
+    Helpers.expect(stub).to_be_truthy()
+    Helpers.expect(stub.desc).to_be("packard: load trigger-only")
+
+    -- Fire the stub
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<leader>to", true, false, true), "x", false)
+
+    -- Plugin should have been loaded
+    Helpers.expect(load_count).to_be(1)
+
+    -- Verify: stub was deleted
+    local post_map = vim.fn.maparg("<leader>to", "n", false, true)
+    Helpers.expect(post_map.lhs).to_be_nil()
+
+    -- Cleanup
+    packard._load_and_config = orig_load
+    pcall(vim.keymap.del, "n", "<leader>to")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_trigger-only")
+  end)
+
   -- Restore mocks
   vim.pack.add = original_pack_add
   vim.fn.isdirectory = original_isdirectory
