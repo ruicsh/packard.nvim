@@ -71,11 +71,14 @@ function M.load_and_config(plugin, plugins)
     -- globpath only searches the specific directory, not all rtp entries.
     source_local_glob(plugin.dir, "plugin/**/*.vim")
     source_local_glob(plugin.dir, "plugin/**/*.lua")
-    source_local_glob(plugin.dir, "ftdetect/**/*.vim")
-    source_local_glob(plugin.dir, "ftdetect/**/*.lua")
-    -- Re-trigger filetype detection so ftdetect files apply to open buffers.
-    -- Matches :packadd behavior which runs filetype detect after sourcing ftdetect/.
-    pcall(vim.cmd, "filetype detect")
+    local ftdetect_vim = vim.fn.globpath(plugin.dir, "ftdetect/**/*.vim", "r", true)
+    local ftdetect_lua = vim.fn.globpath(plugin.dir, "ftdetect/**/*.lua", "r", true)
+    if #ftdetect_vim > 0 or #ftdetect_lua > 0 then
+      _debug_msg("[packard] load_and_config: ftdetect files found, running filetype detect")
+      source_local_glob(plugin.dir, "ftdetect/**/*.vim")
+      source_local_glob(plugin.dir, "ftdetect/**/*.lua")
+      pcall(vim.cmd, "filetype detect")
+    end
   else
     _debug_msg("[packard] load_and_config: remote plugin '%s' — calling packadd", plugin.name)
     -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
@@ -299,21 +302,25 @@ function M.setup_lazy_load(plugins, load_fn)
                 _debug_msg("[packard] stub processing finished: lhs=%s  mode=%s", capture_lhs, mode_str)
 
                 -- Replay the keypress so the intended action runs.
-                -- We avoid 'expr = true' because it causes infinite recursion when
-                -- the real mapping is set inside the callback (the return value hits
-                -- the still-active stub).
-                if capture_rhs and type(capture_rhs) == "function" then
-                  -- For function RHS, we can just call it directly.
-                  _debug_msg("[packard] calling RHS function directly for: %s", capture_lhs)
-                  capture_rhs()
-                else
-                  -- For string RHS or no RHS (where the plugin sets the mapping),
-                  -- we defer the replay until the mapping changes have propagated.
-                  _debug_msg("[packard] replaying keys via nvim_input for: %s", capture_lhs)
-                  vim.schedule(function()
-                    vim.api.nvim_input(capture_lhs)
-                  end)
-                end
+                -- We defer the replay until the mapping changes have propagated.
+                -- This matches lazy.nvim's behavior and ensures the mapping runs
+                -- in a fresh context with correct mode and settled state.
+                -- We avoid 'expr = true' here because the stub's return value would
+                -- be evaluated before the real mapping overwrites it, causing incorrect
+                -- key processing in non-normal modes.
+                -- Defer the replay until the mapping changes have propagated.
+                -- This matches lazy.nvim's behavior and ensures the mapping runs
+                -- in a fresh context with correct mode and settled state.
+                -- Use nvim_feedkeys with 'x' (not nvim_input) so the key is
+                -- processed immediately when the schedule fires.
+                -- We avoid 'expr = true' here because the stub's return value would
+                -- be evaluated before the real mapping overwrites it, causing incorrect
+                -- key processing in non-normal modes.
+                _debug_msg("[packard] replaying keys via nvim_feedkeys for: %s", capture_lhs)
+                vim.schedule(function()
+                  local translated = vim.api.nvim_replace_termcodes(capture_lhs, true, false, true)
+                  vim.api.nvim_feedkeys(translated, "x", false)
+                end)
                 return ""
               end, { desc = stub_desc })
             end

@@ -2139,6 +2139,74 @@ Helpers.describe("Lazy Loading", function()
     cleanup()
   end)
 
+  Helpers.it("keys = fn with require: function RHS fires via replay after stub", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    local side_effect_called = false
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/replaymod/init.lua"] = string.format([[
+        local M = {}
+        function M.action()
+          _G._replay_side_effect = true
+          return "done"
+        end
+        return M
+      ]]),
+    })
+
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function(plugin_or_name)
+      return temp_dir
+    end
+
+    local prev_replaymod = package.loaded["replaymod"]
+    package.loaded["replaymod"] = nil
+    _G._replay_side_effect = false
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "bar/replaymod",
+          keys = function()
+            local m = require("replaymod")
+            return {
+              { "<leader>fr", m.action, desc = "replay action" },
+            }
+          end,
+        },
+      },
+    })
+
+    -- Fire the stub by pressing the trigger key.
+    -- The "x" flag processes keys immediately, but the replay is deferred
+    -- via vim.schedule() so we must wait for the event loop to process it.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<leader>fr", true, false, true), "x", false)
+    vim.wait(200, function()
+      return _G._replay_side_effect
+    end, 10)
+
+    -- Verify: the function was called through the replay mechanism
+    Helpers.expect(_G._replay_side_effect).to_be(true)
+
+    -- Cleanup
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_replaymod then
+      package.loaded["replaymod"] = prev_replaymod
+    else
+      package.loaded["replaymod"] = nil
+    end
+    _G._replay_side_effect = nil
+    pcall(vim.keymap.del, "n", "<leader>fr")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_replaymod")
+    cleanup()
+  end)
+
   -- local plugin with keys=fn + require() — the readline.nvim local install pattern
 
   Helpers.it("local plugin (dir) keys = fn with require: stubs created from package.path", function()
