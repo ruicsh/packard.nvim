@@ -11,6 +11,7 @@ local function _debug_msg(fmt, ...)
   if not M._debug then
     return
   end
+  --[[@diagnostic disable-next-line: redundant-parameter]]
   vim.api.nvim_echo({ { string.format(fmt, ...), "None" } }, true, {})
 end
 
@@ -267,62 +268,39 @@ function M.setup_lazy_load(plugins, load_fn)
                   plugin.name,
                   tostring(capture_rhs)
                 )
-                -- Normalize mode to a list for per-mode operations
+
                 local normalized_modes = type(capture_mode) == "table" and capture_mode or { capture_mode }
-                -- Load the plugin FIRST (plugin code may define additional mappings)
-                load_fn(plugin)
-                _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
-                -- Set the real mapping or delete the stub.
-                -- If we have a RHS, setting it via vim.keymap.set will overwrite the
-                -- stub mapping automatically. If we don't have a RHS, we delete the stub.
-                if capture_rhs then
-                  for _, m in ipairs(normalized_modes) do
+
+                -- Step 1: Delete the stub and set the real mapping (if RHS exists).
+                -- Do this BEFORE loading the plugin, matching lazy.nvim's approach.
+                for _, m in ipairs(normalized_modes) do
+                  local ok_del, err_del = pcall(vim.keymap.del, m, capture_lhs)
+                  if not ok_del then
+                    _debug_msg(
+                      "[packard] stub del failed (may already be replaced): lhs=%s mode=%s err=%s",
+                      capture_lhs,
+                      m,
+                      tostring(err_del)
+                    )
+                  end
+                  if capture_rhs then
                     vim.keymap.set(m, capture_lhs, capture_rhs, capture_opts)
                   end
-                  _debug_msg(
-                    "[packard] real mapping set: lhs=%s  mode=%s  rhs=%s",
-                    capture_lhs,
-                    mode_str,
-                    tostring(capture_rhs)
-                  )
-                else
-                  -- No RHS: just delete the stub. We only delete if it's still our stub
-                  -- (based on the description) to avoid accidentally deleting a mapping
-                  -- set by the plugin during its load.
-                  for _, m in ipairs(normalized_modes) do
-                    local map = vim.fn.maparg(capture_lhs, m, false, true)
-                    if map and map.desc and map.desc == stub_desc then
-                      local ok, err = pcall(vim.keymap.del, m, capture_lhs)
-                      if not ok then
-                        _debug_msg("[packard] stub del failed for mode=%s lhs=%s: %s", m, capture_lhs, tostring(err))
-                      end
-                    end
-                  end
                 end
-                _debug_msg("[packard] stub processing finished: lhs=%s  mode=%s", capture_lhs, mode_str)
+                _debug_msg("[packard] mapping replaced for '%s': rhs=%s", plugin.name, tostring(capture_rhs))
 
-                -- Replay the keypress so the intended action runs.
-                -- We defer the replay until the mapping changes have propagated.
-                -- This matches lazy.nvim's behavior and ensures the mapping runs
-                -- in a fresh context with correct mode and settled state.
-                -- We avoid 'expr = true' here because the stub's return value would
-                -- be evaluated before the real mapping overwrites it, causing incorrect
-                -- key processing in non-normal modes.
-                -- Defer the replay until the mapping changes have propagated.
-                -- This matches lazy.nvim's behavior and ensures the mapping runs
-                -- in a fresh context with correct mode and settled state.
-                -- Use nvim_feedkeys with 'x' (not nvim_input) so the key is
-                -- processed immediately when the schedule fires.
-                -- We avoid 'expr = true' here because the stub's return value would
-                -- be evaluated before the real mapping overwrites it, causing incorrect
-                -- key processing in non-normal modes.
-                _debug_msg("[packard] replaying keys via nvim_feedkeys for: %s", capture_lhs)
-                vim.schedule(function()
-                  local translated = vim.api.nvim_replace_termcodes(capture_lhs, true, false, true)
-                  vim.api.nvim_feedkeys(translated, "x", false)
-                end)
-                return ""
-              end, { desc = stub_desc })
+                -- Step 2: Load the plugin (runs config, sets additional mappings)
+                load_fn(plugin)
+                _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
+
+                -- Step 3: Re-feed the original key with <Ignore> prefix to
+                -- reset Neovim's mapping state so the replayed key is processed
+                -- as a fresh keypress, matching the real mapping.
+                -- Uses "i" flag (insert at head of typeahead) — no vim.schedule needed.
+                local translated = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
+                vim.api.nvim_feedkeys(translated, "i", false)
+                _debug_msg("[packard] replayed key=%s", capture_lhs)
+              end, { expr = true, desc = stub_desc })
             end
           end
         end

@@ -2015,9 +2015,9 @@ Helpers.describe("Lazy Loading", function()
     -- Verify: stub exists (maparg returns a dict with a callback function before firing)
     local stub_before = vim.fn.maparg("<c-b>", "i", false, true)
     Helpers.expect(stub_before).to_be_truthy()
-    -- The stub is a function callback (no rhs), and expr is NOT set (we handle replay manually)
+    -- The stub is a function callback (no rhs), and expr is now set (we use expr expansion)
     Helpers.expect(stub_before.callback).to_be_truthy()
-    Helpers.expect(stub_before.expr).to_be(0)
+    Helpers.expect(stub_before.expr).to_be(1)
 
     -- Fire the stub by entering insert mode then pressing the trigger key.
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<c-b>", true, false, true), "x", false)
@@ -2046,15 +2046,19 @@ Helpers.describe("Lazy Loading", function()
     -- should have actually moved the cursor left in insert mode.
     -- (In headless mode, feedkeys with 'x' processes the schedule loop)
     local col = vim.fn.col(".")
-    -- "i<c-b>" on empty buffer: "i" enters insert mode (col 1), 
+    -- "i<c-b>" on empty buffer: "i" enters insert mode (col 1),
     -- then "<c-b>" triggers stub -> loads -> re-injects "<c-b>" -> hits real mapping "<left>"
-    -- Since it's an empty buffer, col stays 1, but we can verify by checking if 
+    -- Since it's an empty buffer, col stays 1, but we can verify by checking if
     -- the cursor moved relative to a known position.
-    
+
     vim.api.nvim_buf_set_lines(0, 0, -1, false, { "hello" })
     vim.api.nvim_win_set_cursor(0, { 1, 5 }) -- End of "hello"
     -- Process a real mapping fire
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<c-b>", true, false, true), "x", false)
+    -- With the new feedkeys replay approach, we need to wait for the replay to be processed.
+    -- In headless mode with "x" flag, the first feedkeys completes but the replayed
+    -- feedkeys (from the stub) is in the typeahead and needs another "pump".
+    vim.api.nvim_feedkeys("", "x", false)
     Helpers.expect(vim.fn.col(".")).to_be(5) -- Moved from 6 to 5
 
     -- Cleanup
@@ -2170,6 +2174,7 @@ Helpers.describe("Lazy Loading", function()
 
     packard.setup({
       self_management = false,
+      debug = true,
       plugins = {
         {
           "bar/replaymod",
@@ -2184,12 +2189,10 @@ Helpers.describe("Lazy Loading", function()
     })
 
     -- Fire the stub by pressing the trigger key.
-    -- The "x" flag processes keys immediately, but the replay is deferred
-    -- via vim.schedule() so we must wait for the event loop to process it.
+    -- The "x" flag processes keys immediately.
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<leader>fr", true, false, true), "x", false)
-    vim.wait(200, function()
-      return _G._replay_side_effect
-    end, 10)
+    -- Pump the loop to process the re-fed keys from the stub
+    vim.api.nvim_feedkeys("", "x", false)
 
     -- Verify: the function was called through the replay mechanism
     Helpers.expect(_G._replay_side_effect).to_be(true)
@@ -2204,6 +2207,128 @@ Helpers.describe("Lazy Loading", function()
     _G._replay_side_effect = nil
     pcall(vim.keymap.del, "n", "<leader>fr")
     pcall(vim.api.nvim_del_augroup_by_name, "packard_load_replaymod")
+    cleanup()
+  end)
+
+  Helpers.it("keys = fn: first-press in insert mode with function RHS triggers side effect", function()
+    -- This tests the readline.nvim scenario: mode = { "i", "c" }
+    vim.fn.isdirectory = original_isdirectory
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/insertmod/init.lua"] = [[
+        local M = {}
+        function M.action()
+          _G._insert_side_effect = true
+        end
+        return M
+      ]],
+    })
+    vim.fn.isdirectory = function()
+      return 1
+    end
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function()
+      return temp_dir
+    end
+
+    local prev_insertmod = package.loaded["insertmod"]
+    package.loaded["insertmod"] = nil
+    _G._insert_side_effect = false
+
+    packard.setup({
+      self_management = false,
+      debug = true,
+      plugins = {
+        {
+          "bar/insertmod",
+          keys = function()
+            local m = require("insertmod")
+            return {
+              { "<a-b>", m.action, desc = "insert action", mode = { "i", "c" } },
+            }
+          end,
+        },
+      },
+    })
+
+    -- Enter insert mode then press trigger key
+    -- The "x" flag processes keys immediately.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<a-b>", true, false, true), "x", false)
+    -- Pump the loop to process the re-fed keys from the stub
+    vim.api.nvim_feedkeys("", "x", false)
+
+    Helpers.expect(_G._insert_side_effect).to_be(true)
+
+    -- Cleanup
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_insertmod then
+      package.loaded["insertmod"] = prev_insertmod
+    else
+      package.loaded["insertmod"] = nil
+    end
+    _G._insert_side_effect = nil
+    pcall(vim.keymap.del, "i", "<a-b>")
+    pcall(vim.keymap.del, "c", "<a-b>")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_insertmod")
+    cleanup()
+  end)
+
+  Helpers.it("keys = fn: first-press in command mode with function RHS triggers side effect", function()
+    vim.fn.isdirectory = original_isdirectory
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["lua/cmdmod/init.lua"] = [[
+        local M = {}
+        function M.action()
+          _G._cmd_side_effect = true
+        end
+        return M
+      ]],
+    })
+    vim.fn.isdirectory = function()
+      return 1
+    end
+    local original_get_plugin_path = require("packard.utils").get_plugin_path
+    require("packard.utils").get_plugin_path = function()
+      return temp_dir
+    end
+
+    local prev_cmdmod = package.loaded["cmdmod"]
+    package.loaded["cmdmod"] = nil
+    _G._cmd_side_effect = false
+
+    packard.setup({
+      self_management = false,
+      debug = true,
+      plugins = {
+        {
+          "bar/cmdmod",
+          keys = function()
+            local m = require("cmdmod")
+            return {
+              { "<a-c>", m.action, desc = "cmd action", mode = "c" },
+            }
+          end,
+        },
+      },
+    })
+
+    -- Enter command mode then press trigger key
+    -- The "x" flag processes keys immediately.
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(":<a-c>", true, false, true), "x", false)
+    -- Pump the loop to process the re-fed keys from the stub
+    vim.api.nvim_feedkeys("", "x", false)
+
+    Helpers.expect(_G._cmd_side_effect).to_be(true)
+
+    -- Cleanup
+    require("packard.utils").get_plugin_path = original_get_plugin_path
+    if prev_cmdmod then
+      package.loaded["cmdmod"] = prev_cmdmod
+    else
+      package.loaded["cmdmod"] = nil
+    end
+    _G._cmd_side_effect = nil
+    pcall(vim.keymap.del, "c", "<a-c>")
+    pcall(vim.api.nvim_del_augroup_by_name, "packard_load_cmdmod")
     cleanup()
   end)
 

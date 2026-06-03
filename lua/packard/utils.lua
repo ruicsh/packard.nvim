@@ -5,6 +5,7 @@ local function _debug_msg(fmt, ...)
   if not Utils._debug then
     return
   end
+  --[[@diagnostic disable-next-line: redundant-parameter]]
   vim.api.nvim_echo({ { string.format(fmt, ...), "None" } }, true, {})
 end
 

@@ -133,6 +133,7 @@ function M._diagnose(name)
             local lhs = type(k) == "table" and (k[1] or k.lhs) or k
             local mode_str = type(k) == "table" and k.mode or "n"
             ---@type string[]
+            ---@diagnostic disable-next-line: assign-type-mismatch
             local mode_list = type(mode_str) == "string" and { mode_str } or mode_str
             for _, m in ipairs(mode_list) do
               local existing = vim.fn.mapcheck(lhs, m)
