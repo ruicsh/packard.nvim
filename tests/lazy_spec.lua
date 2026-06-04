@@ -2639,7 +2639,7 @@ Helpers.describe("Lazy Loading", function()
     -- Verify: stub exists
     local stub = vim.fn.maparg("<leader>to", "n", false, true)
     Helpers.expect(stub).to_be_truthy()
-    Helpers.expect(stub.desc).to_be("packard: load trigger-only")
+    Helpers.expect(stub.desc).to_be("My custom trigger")
 
     -- Fire the stub
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<leader>to", true, false, true), "x", false)

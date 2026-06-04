@@ -284,10 +284,10 @@ function M.setup_lazy_load(plugins, load_fn)
                     plugin.name
                   )
 
-                  local stub_desc = string.format("packard: load %s", plugin.name)
+                  local stub_desc = real_map_opts.desc
 
-                  -- invoke_rhs calls the real mapping's action directly, avoiding a
-                  -- nvim_feedkeys round-trip that can be intercepted by buffer-local expr
+                   -- invoke_rhs calls the real mapping's action directly, avoiding a
+                   -- nvim_feedkeys round-trip that can be intercepted by buffer-local expr
                   -- mappings (e.g. blink.cmp) that captured a stale reference to this stub.
                   local function invoke_rhs()
                     if type(capture_rhs) == "function" then
