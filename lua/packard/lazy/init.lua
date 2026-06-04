@@ -222,15 +222,17 @@ function M.setup_lazy_load(plugins, load_fn)
               end
             end
 
-            -- Normalize comma-separated mode string to table (e.g. "i,c" → {"i", "c"})
-            if type(mode) == "string" then
-              local parts = vim.split(mode, ",")
-              if #parts > 1 then
-                mode = parts
-              end
-            end
-
             if lhs then
+              -- Expand modes: comma-separated string or table to list of single-char modes
+              local modes = {}
+              if type(mode) == "string" then
+                modes = vim.split(mode, ",")
+              elseif type(mode) == "table" then
+                modes = mode
+              else
+                modes = { "n" }
+              end
+
               -- Build opts for the real mapping (after trigger fires)
               -- Include all non-positional, non-consumed keys from the key spec
               local real_map_opts = {}
@@ -243,64 +245,72 @@ function M.setup_lazy_load(plugins, load_fn)
               end
               real_map_opts.desc = real_map_opts.desc or string.format("packard: load %s", plugin.name)
 
-              -- Capture locals for the closure
-              local capture_lhs = lhs
-              local capture_mode = mode
-              local capture_rhs = rhs
-              local capture_opts = real_map_opts
+              -- Check for NOP: if RHS is "" or "<nop>", set directly without lazy-loading
+              local is_nop = type(rhs) == "string" and (rhs == "" or rhs:lower() == "<nop>")
 
-              -- Log before setting the stub
-              local mode_str = type(capture_mode) == "table" and table.concat(capture_mode, ",") or capture_mode
-              _debug_msg(
-                "[packard] creating stub keymap: mode=%s  lhs=%s  rhs=%s  plugin=%s",
-                mode_str,
-                capture_lhs,
-                tostring(capture_rhs),
-                plugin.name
-              )
+              for _, m in ipairs(modes) do
+                if is_nop then
+                  _debug_msg("[packard] NOP mapping for '%s': mode=%s lhs=%s", plugin.name, m, lhs)
+                  vim.keymap.set(m, lhs, rhs, real_map_opts)
+                else
+                  -- Independent stub for each mode
+                  local capture_mode = m
+                  local capture_lhs = lhs
+                  local capture_rhs = rhs
+                  local capture_opts = real_map_opts
 
-              local stub_desc = string.format("packard: load %s", plugin.name)
-              vim.keymap.set(capture_mode, capture_lhs, function()
-                _debug_msg(
-                  "[packard] stub FIRED: lhs=%s  mode=%s  plugin=%s  rhs=%s",
-                  capture_lhs,
-                  mode_str,
-                  plugin.name,
-                  tostring(capture_rhs)
-                )
+                  _debug_msg(
+                    "[packard] creating stub keymap: mode=%s lhs=%s rhs=%s plugin=%s",
+                    capture_mode,
+                    capture_lhs,
+                    tostring(capture_rhs),
+                    plugin.name
+                  )
 
-                local normalized_modes = type(capture_mode) == "table" and capture_mode or { capture_mode }
-
-                -- Step 1: Delete the stub and set the real mapping (if RHS exists).
-                -- Do this BEFORE loading the plugin, matching lazy.nvim's approach.
-                for _, m in ipairs(normalized_modes) do
-                  local ok_del, err_del = pcall(vim.keymap.del, m, capture_lhs, { buffer = nil })
-                  if not ok_del then
+                  local stub_desc = string.format("packard: load %s", plugin.name)
+                  vim.keymap.set(capture_mode, capture_lhs, function()
                     _debug_msg(
-                      "[packard] stub del failed (may already be replaced): lhs=%s mode=%s err=%s",
+                      "[packard] stub FIRED: mode=%s lhs=%s plugin=%s rhs=%s",
+                      capture_mode,
                       capture_lhs,
-                      m,
-                      tostring(err_del)
+                      plugin.name,
+                      tostring(capture_rhs)
                     )
-                  end
-                  if capture_rhs then
-                    vim.keymap.set(m, capture_lhs, capture_rhs, capture_opts)
-                  end
+
+                    -- Step 1: Delete the stub immediately to prevent recursive loading
+                    local ok_del, err_del = pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
+                    if not ok_del then
+                      _debug_msg(
+                        "[packard] stub del failed (mode=%s lhs=%s): %s",
+                        capture_mode,
+                        capture_lhs,
+                        tostring(err_del)
+                      )
+                    end
+
+                    -- Step 2: Set the real mapping if RHS exists.
+                    -- Matching lazy.nvim: restore the mapping immediately.
+                    if capture_rhs then
+                      vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
+                      _debug_msg("[packard] mapping replaced: mode=%s lhs=%s", capture_mode, capture_lhs)
+                    end
+
+                    -- Step 3: Load the plugin
+                    load_fn(plugin)
+                    _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
+
+                    -- Step 4: Re-feed the original key with <Ignore> prefix.
+                    -- Uses "i" flag (insert at head of typeahead) — no vim.schedule needed.
+                    local translated = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
+                    vim.api.nvim_feedkeys(translated, "i", false)
+                    _debug_msg("[packard] replayed key=%s", capture_lhs)
+                  end, {
+                    expr = true,
+                    desc = stub_desc,
+                    nowait = capture_opts.nowait,
+                  })
                 end
-                _debug_msg("[packard] mapping replaced for '%s': rhs=%s", plugin.name, tostring(capture_rhs))
-
-                -- Step 2: Load the plugin (runs config, sets additional mappings)
-                load_fn(plugin)
-                _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
-
-                -- Step 3: Re-feed the original key with <Ignore> prefix to
-                -- reset Neovim's mapping state so the replayed key is processed
-                -- as a fresh keypress, matching the real mapping.
-                -- Uses "i" flag (insert at head of typeahead) — no vim.schedule needed.
-                local translated = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
-                vim.api.nvim_feedkeys(translated, "i", false)
-                _debug_msg("[packard] replayed key=%s", capture_lhs)
-              end, { expr = true, desc = stub_desc })
+              end
             end
           end
         end
