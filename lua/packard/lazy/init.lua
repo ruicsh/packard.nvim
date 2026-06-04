@@ -15,6 +15,22 @@ local function _debug_msg(fmt, ...)
   vim.api.nvim_echo({ { string.format(fmt, ...), "None" } }, true, {})
 end
 
+---@type table<string, { cleanups: function[] }>
+local _plugin_stubs = {}
+
+---Deactivates all lazy-loading triggers (keys, commands, events, ft) for a plugin.
+---Matches lazy.nvim's Handler.disable(plugin).
+---@param plugin_name string
+local function disable_triggers(plugin_name)
+  if _plugin_stubs[plugin_name] then
+    _debug_msg("[packard] disabling all triggers for '%s'", plugin_name)
+    for _, cleanup in ipairs(_plugin_stubs[plugin_name].cleanups) do
+      cleanup()
+    end
+    _plugin_stubs[plugin_name] = nil
+  end
+end
+
 ---Source files from a specific directory (not all rtp entries).
 ---This matches :packadd behavior which sources plugin/ and ftdetect/ files
 ---for the specific plugin only, not from the entire rtp.
@@ -64,6 +80,7 @@ function M.load_and_config(plugin, plugins)
   end
 
   -- Load the plugin code
+  disable_triggers(plugin.name)
   if plugin.is_local then
     _debug_msg("[packard] load_and_config: local plugin '%s' — prepending rtp with '%s'", plugin.name, plugin.dir)
     -- Local plugins are outside packpath, so add dir to rtp directly
@@ -268,6 +285,43 @@ function M.setup_lazy_load(plugins, load_fn)
                   )
 
                   local stub_desc = string.format("packard: load %s", plugin.name)
+
+                  -- invoke_rhs calls the real mapping's action directly, avoiding a
+                  -- nvim_feedkeys round-trip that can be intercepted by buffer-local expr
+                  -- mappings (e.g. blink.cmp) that captured a stale reference to this stub.
+                  local function invoke_rhs()
+                    if type(capture_rhs) == "function" then
+                      -- If the real mapping is an expr mapping, it returns a string to be typed.
+                      -- Otherwise it returns nil/nothing and the stub effectively inserts nothing.
+                      return capture_rhs()
+                    elseif type(capture_rhs) == "string" then
+                      -- Return the string directly. The stub mapping has replace_keycodes
+                      -- matching the real mapping (default true), so "<Left>" will be
+                      -- translated correctly by Neovim.
+                      return capture_rhs
+                    else
+                      -- No RHS (trigger-only): return the LHS with <Ignore> so it's
+                      -- replayed through the mapping system.
+                      return "<Ignore>" .. capture_lhs
+                    end
+                  end
+
+                  -- Track stub for centralized cleanup
+                  _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
+                  table.insert(_plugin_stubs[plugin.name].cleanups, function()
+                    if capture_rhs then
+                      -- vim.keymap.set replaces any existing mapping (including expr stubs)
+                      -- immediately. No vim.keymap.del needed — inside an expr callback, del
+                      -- is deferred by Neovim and would remove the real mapping we just set.
+                      vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
+                    else
+                      -- No RHS to restore; delete the stub immediately.
+                      -- pcall handles any Neovim limitation with deleting a mapping
+                      -- inside its own expr callback.
+                      pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
+                    end
+                  end)
+
                   vim.keymap.set(capture_mode, capture_lhs, function()
                     _debug_msg(
                       "[packard] stub FIRED: mode=%s lhs=%s plugin=%s rhs=%s",
@@ -277,37 +331,24 @@ function M.setup_lazy_load(plugins, load_fn)
                       tostring(capture_rhs)
                     )
 
-                    -- Step 1: Delete the stub immediately to prevent recursive loading
-                    local ok_del, err_del = pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
-                    if not ok_del then
-                      _debug_msg(
-                        "[packard] stub del failed (mode=%s lhs=%s): %s",
-                        capture_mode,
-                        capture_lhs,
-                        tostring(err_del)
-                      )
-                    end
+                    -- Step 1: Cleanup all stubs for this plugin (including this one)
+                    disable_triggers(plugin.name)
 
-                    -- Step 2: Set the real mapping if RHS exists.
-                    -- Matching lazy.nvim: restore the mapping immediately.
-                    if capture_rhs then
-                      vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
-                      _debug_msg("[packard] mapping replaced: mode=%s lhs=%s", capture_mode, capture_lhs)
-                    end
-
-                    -- Step 3: Load the plugin
+                    -- Step 2: Load the plugin
                     load_fn(plugin)
                     _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
 
-                    -- Step 4: Re-feed the original key with <Ignore> prefix.
-                    -- Uses "i" flag (insert at head of typeahead) — no vim.schedule needed.
-                    local translated = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
-                    vim.api.nvim_feedkeys(translated, "i", false)
-                    _debug_msg("[packard] replayed key=%s", capture_lhs)
+                    -- Step 3: Invoke the real mapping directly instead of replaying
+                    -- the LHS through nvim_feedkeys.  Replayed keys can be intercepted
+                    -- by buffer-local mappings that captured a stale reference to this
+                    -- stub at setup time; direct invocation bypasses those handlers.
+                    return invoke_rhs()
                   end, {
                     expr = true,
                     desc = stub_desc,
                     nowait = capture_opts.nowait,
+                    replace_keycodes = capture_opts.replace_keycodes,
+                    buffer = nil, -- match lazy.nvim exactly
                   })
                 end
               end
@@ -320,19 +361,26 @@ function M.setup_lazy_load(plugins, load_fn)
       if plugin.cmd then
         has_triggers = true
         local cmds = type(plugin.cmd) == "table" and plugin.cmd or { plugin.cmd }
+
+        -- Track stubs for centralized cleanup
+        _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
+        table.insert(_plugin_stubs[plugin.name].cleanups, function()
+          for i2 = 1, #cmds do
+            local c = cmds[i2]
+            pcall(vim.api.nvim_del_user_command, c)
+          end
+        end)
+
         for i = 1, #cmds do
           local cmd = cmds[i]
           -- Shadow the inner loop variable for closure capture
           local cmd = cmd
           vim.api.nvim_create_user_command(cmd, function(args)
-            -- Delete all stub commands for this plugin
-            for i2 = 1, #cmds do
-              local c = cmds[i2]
-              pcall(vim.api.nvim_del_user_command, c)
-            end
-            -- Load the plugin
+            -- Step 1: Disable all triggers
+            disable_triggers(plugin.name)
+            -- Step 2: Load the plugin
             load_fn(plugin)
-            -- Replay the command
+            -- Step 3: Replay the command
             local bang = args.bang and "!" or ""
             vim.cmd(cmd .. bang .. " " .. args.args)
           end, {
@@ -340,11 +388,9 @@ function M.setup_lazy_load(plugins, load_fn)
             nargs = "*",
             range = true,
             complete = function(_, line)
-              -- Delete stubs to allow real completion if any
-              for i2 = 1, #cmds do
-                local c = cmds[i2]
-                pcall(vim.api.nvim_del_user_command, c)
-              end
+              -- Step 1: Disable all triggers to allow real completion
+              disable_triggers(plugin.name)
+              -- Step 2: Load the plugin
               load_fn(plugin)
               return vim.fn.getcompletion(line, "cmdline")
             end,
@@ -381,7 +427,14 @@ function M.setup_lazy_load(plugins, load_fn)
         end
 
         if #plain_events > 0 or next(event_patterns) or has_deferred then
-          local group = vim.api.nvim_create_augroup("packard_load_" .. plugin.name, { clear = true })
+          local group_name = "packard_load_" .. plugin.name
+          local group = vim.api.nvim_create_augroup(group_name, { clear = true })
+
+          -- Track stub for centralized cleanup
+          _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
+          table.insert(_plugin_stubs[plugin.name].cleanups, function()
+            pcall(vim.api.nvim_del_augroup_by_name, group_name)
+          end)
 
           if #plain_events > 0 then
             --[[@diagnostic disable-next-line: param-type-mismatch]]
@@ -429,8 +482,17 @@ function M.setup_lazy_load(plugins, load_fn)
       if plugin.ft then
         has_triggers = true
         local fts = type(plugin.ft) == "table" and plugin.ft or { plugin.ft }
+        local group_name = "packard_ft_load_" .. plugin.name
+        local group = vim.api.nvim_create_augroup(group_name, { clear = true })
+
+        -- Track stub for centralized cleanup
+        _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
+        table.insert(_plugin_stubs[plugin.name].cleanups, function()
+          pcall(vim.api.nvim_del_augroup_by_name, group_name)
+        end)
+
         vim.api.nvim_create_autocmd("FileType", {
-          group = vim.api.nvim_create_augroup("packard_ft_load_" .. plugin.name, { clear = true }),
+          group = group,
           pattern = fts,
           once = true,
           callback = function()
