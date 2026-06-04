@@ -37,9 +37,11 @@ end
 vim.opt.rtp:prepend(packpath)
 
 require("packard").setup({
+  -- Global defaults applied to all plugins
   defaults = {
     minimum_release_age = 30, -- global default in days
   },
+  -- Inline plugin specs
   plugins = {
     "neovim/nvim-lspconfig",
     { "tpope/vim-fugitive", minimum_release_age = 7, cmd = "Git" },
@@ -47,10 +49,24 @@ require("packard").setup({
     { "folke/snacks.nvim", keys = { { "<leader><space>", function() Snacks.picker.smart() end, desc = "Files" } } },
     -- ... more plugins
   },
-  -- Optional settings:
-  -- debug = true,              -- Enable verbose lazy-load tracing to :messages
-  -- notifications = true,      -- Notify on startup if plugins are ready for review
-  -- self_management = true,    -- Automatically include packard.nvim in the plugin list
+  -- OR load specs from a directory (alternative to inline `plugins`)
+  -- specs_dir = "lua/plugins",
+
+  -- Debugging: verbose lazy-load tracing to :messages
+  -- debug = true,
+
+  -- Startup notification for eligible reviews
+  -- notifications = true,
+
+  -- Automatically include packard.nvim in the plugin list
+  -- self_management = true,
+
+  -- Custom highlight overrides
+  -- highlights = {
+  --   PackardHeader = { link = "Title" },
+  -- },
+
+  -- AI-powered diff review (optional)
   ai_review = {
     provider = "openai", -- "openai", "anthropic", "ollama", or "custom"
     model = "gpt-4o",
@@ -70,14 +86,17 @@ Packard supports standard `lazy.nvim`-style lazy-loading fields:
 | -------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `dir`    | `string`                            | Use a local filesystem directory for the plugin (no git remote). Plugin must already exist on disk. No clone/fetch/checkout operations occur. The plugin name is derived from the last path component.                                                                                                                         |
 | `keys`   | `string\|string[]\|table\|function` | Load on keymap(s). Supports simple strings, full mapping tables, or a function that returns key specs. Functions may call `require("<plugin_module>")` — packard pre-populates `package.path` with each plugin's `lua/` dir at setup time so the module resolves without sourcing the plugin's `plugin/` or `ftdetect/` files. |
-| `cmd`    | `string\|string[]`                  | Load on command(s).                                                                                                                                                                                                                                                                                                            |
+| `cmd`    | `string\|string[]`                  | Load on command(s).                                                                                                                                                                                                                                                                                                           |
 | `event`  | `string\|string[]`                  | Load on autocmd event(s). Supports pseudo-events like `VeryLazy` and `LazyFile`.                                                                                                                                                                                                                                               |
 | `ft`     | `string\|string[]`                  | Load on filetype(s).                                                                                                                                                                                                                                                                                                           |
 | `lazy`   | `boolean`                           | If `false`, load immediately on startup (default: `true`).                                                                                                                                                                                                                                                                     |
+| `enabled`| `boolean\|function`                 | If `false` (or a `fun():boolean` returning `false`), the plugin is excluded entirely. Useful for conditional plugin inclusion based on environment or features.                                                                                                                                                                |
+| `cond`   | `boolean\|function`                 | When `false` (or `fun(plugin):boolean\|string` returning `false`), the plugin is installed but **not loaded** — no triggers, no config, no `init()`. String return value shown as notification. Evaluated once at `setup()`.                                                                                                   |
 | `config` | `function\|boolean`                 | Function called after plugin loads: `function(plugin, opts)`. Set to `true` to auto-call `require(MAIN).setup(opts or {})` — useful for zero-config plugins. If omitted but `opts` is present, Packard auto-calls `require(MAIN).setup(opts)`.                                                                                 |
 | `main`   | `string`                            | Override the auto-detected Lua module name used by `config` and `opts` auto-setup. Useful when the plugin's module name doesn't match the repo name.                                                                                                                                                                           |
 | `init`   | `function`                          | Function called at **startup** before the plugin loads: `function(plugin)`. Useful for setting `vim.g.*` values that VimScript plugins check at startup. Runs for all plugins regardless of `lazy` setting.                                                                                                                    |
 | `opts`   | `table` or `function`               | Options passed to the `config` function. If `config` is absent but `opts` is present, auto-invokes `require(MAIN).setup(opts)`. Can also be a function returning a table.                                                                                                                                                      |
+| `dependencies` | `string\|string[]\|table[]`    | Plugins required by this plugin. Auto-injected if not declared. Strings are parsed as specs; tables support the full spec format. Topological sort ensures deps load first.                                                                                                                                                    |
 | `build`  | `function\|string\|string[]\|false` | Post-install/update build step. Supports Lua functions, `:Commands`, `*.lua` files, shell commands, and lists. Auto-detects `build.lua` / `build/init.lua`. Set to `false` to disable.                                                                                                                                         |
 
 Example:
@@ -259,7 +278,51 @@ vim.cmd.colorscheme("catppuccin")
 ## Duplicate Spec Merging
 
 When multiple specs for the same plugin are declared, trigger fields
-(`keys`, `cmd`, `event`, `ft`) are merged from all specs.
+(`keys`, `cmd`, `event`, `ft`) are merged from all specs. Non-trigger
+fields use last-occurrence-wins (so inline `plugins` override file specs).
+The `opts` table is deep-merged across all duplicates, enabling sub-module
+config composition (e.g. `snacks.picker` + `snacks.zen` from separate files
+contribute to the final `opts` table).
+
+## Directory-Based Spec Files
+
+Instead of declaring all plugins inline in `plugins`, you can organize them
+across multiple `.lua` files using `specs_dir`:
+
+```lua
+require("packard").setup({
+  specs_dir = "lua/plugins",
+})
+```
+
+Relative paths are resolved against `stdpath('config')` (same directory as
+`init.lua`). Absolute paths are used as-is.
+
+**How it works:**
+
+- Recursively scans the directory for `.lua` files (parent files first, then
+  subdirectories).
+- Files starting with `_` are skipped.
+- Each file is loaded via `loadfile()` and should return a plugin spec
+  (string or table) or an array of specs.
+- File specs are merged with the inline `plugins` array: trigger fields
+  merged, non-trigger fields inline-wins.
+- Error reporting is batched — all load errors and non-table return warnings
+  are reported together after the scan.
+
+**Example spec file** (`lua/plugins/lsp.lua`):
+
+```lua
+return {
+  "neovim/nvim-lspconfig",
+  config = function()
+    require("lspconfig").setup({})
+  end,
+}
+```
+
+This mirrors lazy.nvim's `import` mechanism: organize config by category
+(LSP, UI, tools) without manual `require()` orchestration.
 
 ## Version Support
 
@@ -321,18 +384,23 @@ Run `:Packard build <name>` to manually rebuild a plugin, or `:Packard build` to
 - `:Packard check` - Check for new commits (async).
 - `:Packard review` - Open dashboard to the Pending tab.
 - `:Packard summary` - View history of applied updates.
+- `:Packard clean` - Open dashboard to the Clean tab for orphan management.
 - `:Packard build [name]` - Rebuild a plugin (or all plugins with build steps).
-- `:Packard help` - Show dashboard keybindings.
+- `:Packard help` - Show dashboard keybindings in a dedicated help tab.
 - `:checkhealth packard` - Check plugin health and consistency.
 
 ### Dashboard Keybindings
+
+The dashboard shows 6 tabs: Installed, Update, Pending, Summary, Clean, and
+Help. In the Installed tab, dependencies are marked with `[dep]` and
+conditionally-loaded plugins (via `cond`) are marked with `[cond]`.
 
 - `I`: Switch to **Installed** tab.
 - `U`: Switch to **Update** tab / Check for updates.
 - `P`: Switch to **Pending** tab.
 - `S`: Switch to **Summary** (History) tab.
 - `C`: Switch to **Clean** tab.
-- `?`: Show help overlay.
+- `?`: Switch to **Help** tab (sectioned layout with all keybindings).
 - `j/k`: Navigate list.
 - `<CR>`: Show commit log inline (Installed/Pending tabs).
 - `<Space>` / `x`: Toggle selection (Clean tab).
@@ -374,7 +442,27 @@ The `ai_review` table supports the following providers:
 
 AI reviews are cached locally in `stdpath('state')/packard-ai-cache.json` to prevent redundant API calls.
 
+## Customizing Highlights
+
+The dashboard appearance can be customized via the `highlights` option in
+`setup()`. You can override any of the built-in highlight groups:
+
+```lua
+require("packard").setup({
+  highlights = {
+    PackardHeader = { link = "Title" },
+    PackardEligible = { link = "DiagnosticOk" },
+    PackardCooldown = { link = "DiagnosticWarn" },
+    PackardCommitHash = { link = "Special" },
+  },
+  -- ... other config
+})
+```
+
+For a full list of available highlight groups, see `:help packard-highlights`.
+
 If a force-push is detected
-(upstream SHA changes but is not a descendant of the discovery commit), `packard` will mark it as an anomaly for extra caution.
+(upstream SHA changes but is not a descendant of the discovery commit),
+`packard` will mark it as an anomaly for extra caution.
 
 No plugin code is updated without your explicit consent.
