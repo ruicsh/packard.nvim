@@ -316,17 +316,18 @@ return function(UI)
             priority = is_selected and 200 or 100,
           })
 
-          -- 3. Commit (find next word)
+          -- 3. Commit (find next word) — only for tabs that have commit/target fields
           local commit_start = line:find("%w", name_end)
-          if commit_start then
+          if commit_start and UI.tab ~= "clean" then
             local commit_end = line:find(" ", commit_start) or (commit_start + 7)
+            commit_end = math.min(commit_end, #line)
             vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start - 1, {
               end_col = commit_end,
               hl_group = "PackardCommitHash",
             })
 
-            -- 4. Branch (dim if default)
-            if UI.tab ~= "pending" then
+            -- 4. Branch (dim if default) — installed tab only
+            if UI.tab ~= "pending" and UI.tab ~= "clean" then
               local branch_start = line:find("%S", commit_end)
               if branch_start then
                 local branch_word = line:match("%S+", branch_start)
