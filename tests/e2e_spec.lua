@@ -295,6 +295,86 @@ Helpers.describe("End-to-end flow", function()
     Helpers.expect(n.msg:match("Could not resolve host") ~= nil).to_be_truthy()
   end)
 
+  Helpers.it("force-approve bypasses cooldown", function()
+    local State = require("packard.state")
+    local state_path = vim.fs.joinpath(vim.fn.stdpath("state"), "packard-state.json")
+    local lock_path = vim.fs.joinpath(vim.fn.stdpath("config"), "nvim-pack-lock.json")
+
+    -- Pre-populate state with a queue entry just discovered (in cooldown)
+    local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
+    mock_files[state_path] = vim.fn.json_encode({
+      queue = {
+        ["user/repo"] = {
+          commit = "sha123",
+          discovered_at = now,
+          tag = nil,
+        },
+      },
+      blacklist = {},
+      update_log = {},
+    })
+    State.invalidate()
+
+    -- Lockfile with old commit so handle_approve detects the transition
+    mock_files[lock_path] = vim.fn.json_encode({ repo = { ref = "old-sha" } })
+
+    -- Reset vim.pack overrides from prior tests to the original no-op stubs
+    vim.pack.add = function() end
+    vim.pack.get = function() return {} end
+
+    -- Setup with a high min_age so the entry stays in cooldown
+    packard.setup({
+      plugins = { { "user/repo", minimum_release_age = 30 } },
+      self_management = false,
+    })
+
+    local Lockfile = require("packard.lockfile")
+    Lockfile.invalidate()
+
+    local UI = require("packard.ui")
+    UI.open(packard.plugins, "pending")
+
+    -- Mock confirm to answer Yes
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function(_msg, _buttons, _default)
+      return 1
+    end
+
+    UI._do_render()
+    local target_line = 0
+    for line, owner_repo in pairs(UI.line_map) do
+      if owner_repo == "user/repo" then
+        target_line = line
+        break
+      end
+    end
+    Helpers.expect(target_line > 0).to_be_truthy()
+    vim.api.nvim_win_set_cursor(UI.win, { target_line, 0 })
+
+    -- 1. Normal approve (no force) should NOT work on cooldown entry
+    UI.handle_approve()
+    local s = State.read()
+    if not s.queue["user/repo"] then
+      print("Queue should still contain the entry after non-force approve, got: " .. vim.inspect(s))
+    end
+    Helpers.expect(s.queue["user/repo"] ~= nil).to_be_truthy()
+
+    -- 2. Force approve SHOULD work on cooldown entry
+    UI.handle_approve(true)
+
+    -- 3. Verify dequeued and logged
+    s = State.read()
+    Helpers.expect(s.queue["user/repo"]).to_be_nil()
+    Helpers.expect(s.update_log["user/repo"] ~= nil).to_be_truthy()
+    Helpers.expect(#s.update_log["user/repo"]).to_be(1)
+    Helpers.expect(s.update_log["user/repo"][1].from).to_be("old-sha")
+    Helpers.expect(s.update_log["user/repo"][1].to).to_be("sha123")
+
+    -- Restore
+    vim.fn.confirm = original_confirm
+    UI.close()
+  end)
+
   Helpers.it("populates lockfile after clean install so commits are not unknown", function()
     local Lockfile = require("packard.lockfile")
     local lock_path = vim.fs.joinpath(vim.fn.stdpath("config"), "nvim-pack-lock.json")

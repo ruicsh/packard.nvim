@@ -408,7 +408,8 @@ conditionally-loaded plugins (via `cond`) are marked with `[cond]`.
 - `j/k`: Navigate list.
 - `<CR>`: Show commit log inline (Installed/Pending tabs).
 - `<Space>` / `x`: Toggle selection (Clean tab).
-- `A`: Approve pending update (Pending tab).
+- `a`: Approve pending update (Pending tab, eligible only).
+- `A`: Force approve pending update (override cooldown).
 - `X`: Reject pending update / Clean selected orphans.
 - `gx`: Open forge compare URL in browser.
 - `r`: Toggle AI Review inline.
@@ -421,7 +422,7 @@ conditionally-loaded plugins (via `cond`) are marked with `[cond]`.
 1. **Discovery**: `:Packard check` fetches the latest HEAD for each plugin.
 2. **Quarantine**: New commits enter a "Pending" queue with a discovery timestamp.
 3. **Cooldown**: Commits are held in "In Cooldown" until `minimum_release_age` days have passed since discovery.
-4. **Audit**: User reviews the "Eligible" changes (using `gx` for browser diff or `a` for AI analysis).
+4. **Audit**: User reviews the "Eligible" changes (using `gx` for browser diff or `r` for AI analysis).
 5. **Action**: User explicitly approves (installs) or rejects (permanently blacklists) the commit.
 
 ## AI Review Configuration

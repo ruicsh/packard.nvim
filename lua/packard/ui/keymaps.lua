@@ -46,8 +46,11 @@ return function(UI)
       ["x"] = function()
         UI.handle_toggle_selection()
       end,
-      ["A"] = function()
+      ["a"] = function()
         UI.handle_approve()
+      end,
+      ["A"] = function()
+        UI.handle_approve(true)
       end,
       ["X"] = function()
         UI.handle_reject()

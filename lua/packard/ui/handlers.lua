@@ -15,8 +15,10 @@ return function(UI)
   ---Approve a pending update. Reads the cursor row, looks up the pending
   ---entry, confirms with the user, calls `vim.pack.update()`, logs the
   ---update, dequeues, and refreshes the dashboard.
-  ---Only active on the Pending tab for eligible (cooldown-expired) entries.
-  function UI.handle_approve()
+  ---Only active on the Pending tab.
+  ---@param force? boolean When true, bypasses cooldown and allows approving
+  ---  entries still in the cooldown period.
+  function UI.handle_approve(force)
     if UI.tab ~= "pending" then
       return
     end
@@ -28,15 +30,38 @@ return function(UI)
 
     local status = Cooldown.get_status(UI.plugins)
     local entry = status.eligible[owner_repo]
+    if not entry and force then
+      entry = status.cooldown[owner_repo]
+    end
     if not entry then
-      print("packard: this commit is still in cooldown")
+      if force then
+        print("packard: no pending update for this plugin")
+      elseif status.cooldown[owner_repo] then
+        print("packard: this commit is still in cooldown")
+      else
+        print("packard: no pending update for this plugin")
+      end
       return
     end
 
     local plugin_name = owner_repo:match("/([^/]+)$")
     --[[@diagnostic disable: redundant-parameter]]
-    local confirmed =
-      vim.fn.confirm(string.format("Approve %s -> %s?", owner_repo, entry.commit:sub(1, 7)), "&Yes\n&No")
+    local confirmed
+    if force and status.cooldown[owner_repo] then
+      local remaining = entry.remaining_days or 0
+      confirmed = vim.fn.confirm(
+        string.format(
+          "Override cooldown (%d days remaining) — Approve %s -> %s?",
+          remaining,
+          owner_repo,
+          entry.commit:sub(1, 7)
+        ),
+        "&Yes\n&No",
+        2
+      )
+    else
+      confirmed = vim.fn.confirm(string.format("Approve %s -> %s?", owner_repo, entry.commit:sub(1, 7)), "&Yes\n&No")
+    end
     --[[@diagnostic enable: redundant-parameter]]
     if confirmed ~= 1 then
       return
