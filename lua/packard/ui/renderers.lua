@@ -275,26 +275,51 @@ return function(UI)
   end
 
   function UI.render_help(lines)
-    table.insert(lines, "  KEYBINDINGS:")
+    -- Intro
+    table.insert(lines, "  packard — security-first Neovim plugin manager")
+    table.insert(lines, "  Cooldown-driven updates with mandatory human review")
     table.insert(lines, "")
-    table.insert(lines, "    I          Switch to Installed tab")
-    table.insert(lines, "    P          Switch to Pending tab")
-    table.insert(lines, "    S          Switch to Summary tab")
-    table.insert(lines, "    C          Switch to Clean tab")
-    table.insert(lines, "    U          Check for updates (Update tab)")
-    table.insert(lines, "    ?          Show this help")
+
+    -- Helper to add a keybinding row (key column padded to 12 chars)
+    local function add_key(key, desc)
+      table.insert(lines, string.format("    %-12s %s", key, desc))
+    end
+
+    -- Navigation
+    table.insert(lines, "  Navigation")
     table.insert(lines, "")
-    table.insert(lines, "    j/k        Navigate list")
-    table.insert(lines, "    <CR>       Show commit log (installed->pending / recent)")
-    table.insert(lines, "    <Space>/x  Toggle selection (Clean tab)")
-    table.insert(lines, "    A          Approve pending update")
-    table.insert(lines, "    X          Reject pending update / Clean selected orphans")
-    table.insert(lines, "    gx         Compare changes in browser")
-    table.insert(lines, "    r          Toggle AI Review (inline)")
-    table.insert(lines, "    R          Force re-run AI Review")
-    table.insert(lines, "    B          Rebuild plugin under cursor")
+    add_key("j / k", "Move cursor up/down")
+    add_key("I", "Installed tab")
+    add_key("P", "Pending tab")
+    add_key("S", "Summary tab")
+    add_key("C", "Clean tab")
     table.insert(lines, "")
-    table.insert(lines, "    q/<Esc>    Close dashboard")
+
+    -- Actions
+    table.insert(lines, "  Actions")
+    table.insert(lines, "")
+    add_key("U", "Check for updates")
+    add_key("A", "Approve pending update")
+    add_key("X", "Reject / Clean orphans")
+    add_key("B", "Rebuild plugin")
+    add_key("<Space> / x", "Toggle selection")
+    table.insert(lines, "")
+
+    -- Review
+    table.insert(lines, "  Review")
+    table.insert(lines, "")
+    add_key("<CR>", "View commit log")
+    add_key("gx", "Compare in browser")
+    add_key("r", "Toggle AI review")
+    add_key("R", "Force re-run AI review")
+    table.insert(lines, "")
+
+    -- Window
+    table.insert(lines, "  Window")
+    table.insert(lines, "")
+    add_key("?", "Show this help")
+    add_key("q / <Esc>", "Close dashboard")
+    table.insert(lines, "")
   end
 
   function UI.render_update(lines)

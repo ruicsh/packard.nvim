@@ -69,14 +69,17 @@ Helpers.describe("UI Dashboard", function()
     UI.open({}, "help")
     UI._do_render()
     local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
-    local found = false
+    local found_intro = false
+    local found_nav = false
     for _, line in ipairs(lines) do
-      if line:match("KEYBINDINGS:") then
-        found = true
-        break
+      if line:match("packard") then
+        found_intro = true
+      elseif line:match("^  Navigation$") then
+        found_nav = true
       end
     end
-    Helpers.expect(found).to_be_truthy()
+    Helpers.expect(found_intro).to_be_truthy()
+    Helpers.expect(found_nav).to_be_truthy()
     UI.close()
   end)
 
@@ -194,7 +197,7 @@ Helpers.describe("UI Dashboard", function()
     local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
     local found_u = false
     for _, line in ipairs(lines) do
-      if line:match("Check for updates") and line:match("U") then
+      if line:match("^    U") and line:match("Check for updates") then
         found_u = true
         break
       end

@@ -32,6 +32,10 @@ return function(UI)
       PackardAIRiskHigh = { link = "DiagnosticError" },
       PackardAIValue = {},
       PackardAIBorder = {},
+      PackardHelpSection = { link = "Title" },
+      PackardHelpKey = { link = "Special" },
+      PackardHelpDesc = { link = "Comment" },
+      PackardHelpIntro = { link = "Comment" },
     }
 
     local highlights = vim.tbl_deep_extend("force", defaults, UI._highlight_config or {})
@@ -90,8 +94,39 @@ return function(UI)
     end
 
     for i, line in ipairs(lines) do
-      -- Section headers (Installed (8), etc.)
-      if line:match("^  %a") then
+      if UI.tab == "help" then
+        -- ── Help tab specific highlighting ──────────────────────────────────
+        -- Section headers (single-word title lines)
+        if line:match("^  [A-Z]%a+$") then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 2, {
+            end_col = #line,
+            hl_group = "PackardHelpSection",
+          })
+        -- Keybinding lines (4-space indent, key, double-space, description)
+        elseif line:match("^    %S") then
+          local key_end = line:find("  ", 5)
+          if key_end then
+            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 4, {
+              end_col = key_end,
+              hl_group = "PackardHelpKey",
+            })
+            local desc_start = line:find("%S", key_end + 1)
+            if desc_start then
+              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, desc_start - 1, {
+                end_col = #line,
+                hl_group = "PackardHelpDesc",
+              })
+            end
+          end
+        -- Intro blurb
+        elseif line:match("^  packard") or line:match("^  Cooldown") then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 2, {
+            end_col = #line,
+            hl_group = "PackardHelpIntro",
+          })
+        end
+      -- ── General tab highlighting ─────────────────────────────────────────
+      elseif line:match("^  %a") then
         local count_start = line:find(" %(", 3)
         if count_start then
           -- Title: bold
