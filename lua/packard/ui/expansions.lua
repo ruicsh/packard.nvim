@@ -1,3 +1,8 @@
+---@class packard.ui.expansions
+---Inline expansion renderers for the dashboard.
+---Handles AI review results and git commit log expansions that appear below
+---a plugin row when the user presses `r` or `<CR>`.
+
 return function(UI)
   ---Get the AI review risk level for a pending plugin from `UI.ai_results`.
   ---@param owner_repo string
@@ -10,6 +15,11 @@ return function(UI)
     return "-"
   end
 
+  ---Word-wrap text to fit within a maximum display width.
+  ---Splits on whitespace and accumulates lines to avoid exceeding max_len.
+  ---@param text string Text to wrap
+  ---@param max_len integer Maximum display width in characters
+  ---@return string[] Wrapped lines
   function UI._wrap_text(text, max_len)
     local words = vim.split(text, "%s+")
     local res = {}
@@ -28,6 +38,11 @@ return function(UI)
     return res
   end
 
+  ---Render AI review result inline below a plugin row.
+  ---Shows a spinner while loading, error text on failure, or structured
+  ---risk/summary/reasoning on success.
+  ---@param lines string[] Buffer lines to append to
+  ---@param owner_repo string Plugin identifier for looking up the result
   function UI._render_ai_expansion(lines, owner_repo)
     local result = UI.ai_results[owner_repo]
     local win_width = vim.api.nvim_win_get_width(UI.win)
@@ -74,6 +89,10 @@ return function(UI)
     add_line("")
   end
 
+  ---Render git commit log entries inline below a plugin row.
+  ---Caches log output in `UI._log_cache` to avoid re-fetching.
+  ---@param lines string[] Buffer lines to append to
+  ---@param owner_repo string Plugin identifier for looking up cached log
   function UI._render_log_expansion(lines, owner_repo)
     local log_entries = UI._log_cache[owner_repo]
     if not log_entries then

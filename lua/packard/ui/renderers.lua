@@ -4,7 +4,16 @@ local Orphans = require("packard.orphans")
 local State = require("packard.state")
 local Utils = require("packard.utils")
 
+---@class packard.ui.renderers
+---Tab content renderers for the dashboard.
+---Each function appends lines to the provided `lines` table and populates
+---`UI.line_map` to map buffer lines to `owner_repo`.
+
 return function(UI)
+  ---Render the Installed tab: lists all plugins grouped by installed/anomaly,
+  ---with commit SHA, branch display, cooldown, and status icons.
+  ---Dependencies show `[dep]`, cond plugins show `[cond]`.
+  ---@param lines string[] Buffer lines to append to
   function UI.render_installed(lines)
     local grouped = {
       installed = {},
@@ -81,6 +90,10 @@ return function(UI)
     render_section("Anomalies", grouped.anomalies, "⚠︎")
   end
 
+  ---Render the Pending tab: eligible and in-cooldown plugins with pending
+  ---commits. Pre-populates AI cache results. Shows risk level, cooldown
+  ---status, and inline expansions (log or AI review).
+  ---@param lines string[] Buffer lines to append to
   function UI.render_pending(lines)
     local status = Cooldown.get_status(UI.plugins)
 
@@ -195,6 +208,9 @@ return function(UI)
     render_section("In Cooldown", status.cooldown, "⏳")
   end
 
+  ---Render the Summary tab: update history grouped by plugin, newest first.
+  ---Capped at 10 entries per plugin. Shows from/to commit, date, and age.
+  ---@param lines string[] Buffer lines to append to
   function UI.render_summary(lines)
     local s = State.read()
     if not next(s.update_log) then
@@ -243,6 +259,9 @@ return function(UI)
     end
   end
 
+  ---Render the Clean tab: orphaned directories and stale state metadata.
+  ---Supports toggle selection via `UI.selected_orphans`.
+  ---@param lines string[] Buffer lines to append to
   function UI.render_clean(lines)
     local s = State.read()
     local results = Orphans.find_orphans(UI.plugins, s)
@@ -274,6 +293,8 @@ return function(UI)
     end
   end
 
+  ---Render the Help tab: sectioned layout with all keybinding descriptions.
+  ---@param lines string[] Buffer lines to append to
   function UI.render_help(lines)
     -- Intro
     table.insert(lines, "  packard — security-first Neovim plugin manager")
@@ -322,6 +343,9 @@ return function(UI)
     table.insert(lines, "")
   end
 
+  ---Render the Update tab: shows idle, running (progress), done (results),
+  ---or error state for the update check workflow.
+  ---@param lines string[] Buffer lines to append to
   function UI.render_update(lines)
     if UI.check_state == "idle" then
       table.insert(lines, "  Update Check")

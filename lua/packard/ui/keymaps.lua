@@ -1,4 +1,14 @@
+---@class packard.ui.keymaps
+---Dashboard keybinding setup.
+---Maps single-character keys to UI action handlers with buffer-scoped
+---mappings. The `U` key triggers `packard.check()` and switches to the
+---Update tab.
+
 return function(UI)
+  ---Register all dashboard keybindings on `UI.buf`.
+  ---Maps navigation (j/k, I/P/S/C/?), actions (A/X/B/U/<Space>/x), and
+  ---review (r/R/gx/<CR>) to their respective handlers.
+  ---Key bindings are buffer-local and created with `{ silent = true }`.
   function UI.setup_keymaps()
     ---Create a handler that switches to the given tab and re-renders.
     ---@param tab_id string

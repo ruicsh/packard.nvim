@@ -6,7 +6,16 @@ local State = require("packard.state")
 local URL = require("packard.url")
 local Utils = require("packard.utils")
 
+---@class packard.ui.handlers
+---Dashboard action handlers for user keypresses.
+---Each handler reads the current cursor position from `UI.line_map`,
+---performs the action, and triggers `UI.render()` on completion.
+
 return function(UI)
+  ---Approve a pending update. Reads the cursor row, looks up the pending
+  ---entry, confirms with the user, calls `vim.pack.update()`, logs the
+  ---update, dequeues, and refreshes the dashboard.
+  ---Only active on the Pending tab for eligible (cooldown-expired) entries.
   function UI.handle_approve()
     if UI.tab ~= "pending" then
       return
@@ -76,6 +85,9 @@ return function(UI)
     UI.render()
   end
 
+  ---Reject a pending update (permanently blacklist the commit SHA).
+  ---On the Clean tab, delegates to `handle_clean_orphans()`.
+  ---Shows a confirmation prompt before blacklisting.
   function UI.handle_reject()
     if UI.tab == "clean" then
       UI.handle_clean_orphans()
@@ -110,6 +122,8 @@ return function(UI)
     print("packard: rejected and blacklisted " .. entry.commit:sub(1, 7))
   end
 
+  ---Toggle selection of an orphan for cleanup in the Clean tab.
+  ---Selected orphans are tracked in `UI.selected_orphans`.
   function UI.handle_toggle_selection()
     if UI.tab ~= "clean" then
       return
@@ -128,21 +142,16 @@ return function(UI)
     UI.render()
   end
 
+  ---Clean selected orphans: remove directories and purge stale metadata.
+  ---Prompts for confirmation before deletion. Logs each action and refreshes
+  ---the dashboard on completion.
   function UI.handle_clean_orphans()
-    if UI.tab ~= "clean" then
-      return
-    end
-
-    local selected = {}
-    for item, _ in pairs(UI.selected_orphans) do
-      table.insert(selected, item)
-    end
-
-    if #selected == 0 then
+    if not next(UI.selected_orphans) then
       print("packard: no orphans selected")
       return
     end
 
+    local selected = vim.tbl_keys(UI.selected_orphans)
     table.sort(selected)
     --[[@diagnostic disable-next-line: redundant-parameter]]
     local confirmed = vim.fn.confirm(string.format("Delete %d selected orphans?", #selected), "&Yes\n&No")
@@ -228,6 +237,9 @@ return function(UI)
     end
   end
 
+  ---Open a forge compare URL in the default browser for the plugin at the
+  ---current cursor row. Supports GitHub, GitLab, and Bitbucket URLs.
+  ---Only active on the Pending tab.
   function UI.handle_compare()
     if UI.tab ~= "pending" then
       return
@@ -279,6 +291,8 @@ return function(UI)
     end
   end
 
+  ---Rebuild the plugin under the cursor by running its build step.
+  ---Triggers `:Packard build` with the plugin's owner/repo.
   function UI.handle_build()
     local line = vim.api.nvim_win_get_cursor(UI.win)[1]
     local owner_repo = UI.line_map[line]
@@ -311,6 +325,9 @@ return function(UI)
     UI.render()
   end
 
+  ---Toggle commit log expansion for the plugin at the current cursor row.
+  ---On the Pending tab, shows the diff range (installed..pending).
+  ---On the Installed tab, shows the most recent commits.
   function UI.handle_log()
     if UI.tab ~= "pending" and UI.tab ~= "installed" then
       return
@@ -410,6 +427,10 @@ return function(UI)
     UI._do_render()
   end
 
+  ---Toggle or trigger AI review for the pending plugin at the cursor row.
+  ---If `opts.force` is true, bypasses the cache and forces a re-run.
+  ---Results are rendered inline below the row via `_render_ai_expansion`.
+  ---@param opts? table Options table; pass `{ force = true }` to re-run.
   function UI.handle_ai_review(opts)
     opts = opts or {}
     if UI.tab ~= "pending" then

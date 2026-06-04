@@ -1,6 +1,16 @@
+---@class packard.ui.highlights
+---Dashboard highlight group definitions and extmark application.
+---Defines 29 named highlight groups with sensible defaults linked to Neovim
+---built-in groups. Supports user overrides and auto-re-applies on
+---`ColorScheme` changes.
+
 local ns = vim.api.nvim_create_namespace("packard")
 
 return function(UI)
+  ---Define or refresh all dashboard highlight groups.
+  ---Merges user-provided highlights on top of defaults. Re-registers the
+  ---`ColorScheme` autocmd to re-apply highlights on theme changes.
+  ---@param user_highlights? table Optional table of highlight overrides
   function UI.setup_highlights(user_highlights)
     if user_highlights then
       UI._highlight_config = user_highlights
@@ -57,6 +67,11 @@ return function(UI)
     end
   end
 
+  ---Apply extmark-based highlighting to the dashboard buffer.
+  ---Iterates the buffer lines and applies highlight groups for tab headers,
+  ---section labels, keybinding columns, status icons, risk indicators, and
+  ---row-level highlights.
+  ---@param lines? string[] Buffer lines to scan (defaults to current content)
   function UI.apply_highlights(lines)
     local buf = UI.buf
     vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
