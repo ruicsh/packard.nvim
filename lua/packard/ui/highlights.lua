@@ -290,7 +290,21 @@ return function(UI)
               hl_group = "PackardCommitHash",
             })
 
-            -- 4. Risk (if in pending tab)
+            -- 4. Branch (dim if default)
+            if UI.tab ~= "pending" then
+              local branch_start = line:find("%S", commit_end)
+              if branch_start then
+                local branch_word = line:match("%S+", branch_start)
+                if branch_word == "(default)" then
+                  vim.api.nvim_buf_set_extmark(buf, ns, i - 1, branch_start - 1, {
+                    end_col = branch_start - 1 + #branch_word,
+                    hl_group = "PackardComment",
+                  })
+                end
+              end
+            end
+
+            -- 5. Risk (if in pending tab)
             if UI.tab == "pending" then
               local risk_start = line:find("%S", commit_end)
               if risk_start then
