@@ -96,6 +96,10 @@ return function(UI)
   ---@param lines string[] Buffer lines to append to
   function UI.render_pending(lines)
     local status = Cooldown.get_status(UI.plugins)
+    if not next(status.eligible) and not next(status.cooldown) then
+      table.insert(lines, "  No pending updates.")
+      return
+    end
 
     -- Pre-populate risk from AI cache for pending plugins that have been reviewed before
     for owner_repo, entry in pairs(status.eligible) do
