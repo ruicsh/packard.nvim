@@ -64,11 +64,11 @@ packard.setup({opts})                           *packard.setup()*
   ┌─────────────────────┬─────────┬──────────┬─────────────────────────────────┐
   │ Field               │ Type    │ Default  │ Description                     │
   ├─────────────────────┼─────────┼──────────┼─────────────────────────────────┤
-  │ plugins             │ table   │ nil      │ Array of plugin specs          │
-  │ defaults            │ table   │ {}       │ Global defaults (see below)    │
+  │ plugins             │ table   │ nil      │ Array of plugin specs           │
+  │ defaults            │ table   │ {}       │ Global defaults (see below)     │
   │ specs_dir           │ string  │ nil      │ Path to directory of .lua       │
   │                     │         │          │ spec files                      │
-  │ ai_review           │ table   │ nil      │ AI review configuration        │
+  │ ai_review           │ table   │ nil      │ AI review configuration         │
   │ highlights          │ table   │ nil      │ Custom highlight group overrides│
   │ debug               │ boolean │ false    │ Enable verbose lazy-load        │
   │                     │         │          │ tracing to |:messages|          │
@@ -96,7 +96,7 @@ packard.setup({opts})                           *packard.setup()*
   │                     │         │          │ "ollama", or "custom"           │
   │ model               │ string  │ varies   │ LLM model identifier            │
   │ url                 │ string  │ varies   │ API endpoint URL                │
-  │ headers             │ table   │ {}       │ HTTP headers (Auth, etc.)      │
+  │ headers             │ table   │ {}       │ HTTP headers (Auth, etc.)       │
   │ diff_warn_kb        │ number  │ 50       │ Warn threshold for diff size    │
   │ diff_error_kb       │ number  │ 200      │ Error threshold for diff size   │
   └─────────────────────┴─────────┴──────────┴─────────────────────────────────┘
@@ -141,13 +141,13 @@ Table form: >
 ------------------------------------------------------------------------------
 4.1 Source Fields                                  *packard-spec-source*
 
-  ┌──────────┬──────────┬──────────┬─────────────────────────────────────────┐
-  │ Field    │ Type     │ Required │ Description                             │
-  ├──────────┼──────────┼──────────┼─────────────────────────────────────────┤
-  │ [1]      │ string   │ no(*)    │ "owner/repo" — remote plugin source     │
-  │ dir      │ string   │ no(*)    │ Local filesystem path (no git remote)   │
-  │ name     │ string   │ no       │ Override auto-derived plugin name       │
-  └──────────┴──────────┴──────────┴─────────────────────────────────────────┘
+  ┌──────────┬──────────┬──────────┬───────────────────────────────────────────┐
+  │ Field    │ Type     │ Required │ Description                               │
+  ├──────────┼──────────┼──────────┼───────────────────────────────────────────┤
+  │ [1]      │ string   │ no(*)    │ "owner/repo" — remote plugin source       │
+  │ dir      │ string   │ no(*)    │ Local filesystem path (no git remote)     │
+  │ name     │ string   │ no       │ Override auto-derived plugin name         │
+  └──────────┴──────────┴──────────┴───────────────────────────────────────────┘
   (*) At least one of [1] or dir must be provided.
 
   `dir` supports local plugins directly: >
@@ -165,25 +165,25 @@ Table form: >
 ------------------------------------------------------------------------------
 4.2 Lazy-Loading Fields                              *packard-spec-lazy*
 
-  ┌─────────────────┬──────────────┬─────────────────────────────────────────┐
-  │ Field           │ Type         │ Description                             │
-  ├─────────────────┼──────────────┼─────────────────────────────────────────┤
-  │ keys            │ string,      │ Load on keymap(s). Supports strings,    │
-  │                 │ string[],    │ full mapping tables `{lhs, rhs, ...}`,  │
-  │                 │ table,       │ or functions returning key specs.       │
-  │                 │ function     │ Functions may `require()` the plugin    │
-  │                 │              │ module at setup time — packard          │
-  │                 │              │ pre-populates `package.path`.           │
-  │ cmd             │ string,      │ Load on |:command|(s).                  │
-  │                 │ string[]     │                                          │
-  │ event           │ string,      │ Load on autocmd event(s). Supports      │
-  │                 │ string[]     │ pseudo-events: `VeryLazy`, `LazyFile`.  │
-  │                 │              │ Pattern events: `BufEnter *.lua`.       │
-  │ ft              │ string,      │ Load on filetype(s).                    │
-  │                 │ string[]     │                                          │
-  │ lazy            │ boolean      │ If `false`, load immediately on startup │
-  │                 │              │ (default: `true`).                      │
-  └─────────────────┴──────────────┴─────────────────────────────────────────┘
+  ┌─────────────────┬──────────────┬───────────────────────────────────────────┐
+  │ Field           │ Type         │ Description                               │
+  ├─────────────────┼──────────────┼───────────────────────────────────────────┤
+  │ keys            │ string,      │ Load on keymap(s). Supports strings,      │
+  │                 │ string[],    │ full mapping tables `{lhs, rhs, ...}`,    │
+  │                 │ table,       │ or functions returning key specs.         │
+  │                 │ function     │ Functions may `require()` the plugin      │
+  │                 │              │ module at setup time — packard            │
+  │                 │              │ pre-populates `package.path`.             │
+  │ cmd             │ string,      │ Load on |:command|(s).                    │
+  │                 │ string[]     │                                           │
+  │ event           │ string,      │ Load on autocmd event(s). Supports        │
+  │                 │ string[]     │ pseudo-events: `VeryLazy`, `LazyFile`.    │
+  │                 │              │ Pattern events: `BufEnter *.lua`.         │
+  │ ft              │ string,      │ Load on filetype(s).                      │
+  │                 │ string[]     │                                           │
+  │ lazy            │ boolean      │ If `false`, load immediately on startup   │
+  │                 │              │ (default: `true`).                        │
+  └─────────────────┴──────────────┴───────────────────────────────────────────┘
 
   Example: >
     { "folke/snacks.nvim",
@@ -206,24 +206,24 @@ Table form: >
 ------------------------------------------------------------------------------
 4.3 Setup Fields                                      *packard-spec-setup*
 
-  ┌──────────┬──────────────────┬─────────────────────────────────────────────┐
-  │ Field    │ Type             │ Description                                 │
-  ├──────────┼──────────────────┼─────────────────────────────────────────────┤
-  │ config   │ function,        │ Called after plugin loads:                  │
-  │          │ boolean          │ `function(plugin, opts)`.                   │
-  │          │                  │ `true` auto-calls `require(MAIN).setup()`.  │
-  │ opts     │ table, function  │ Options passed to `config`. If `config` is  │
-  │          │                  │ absent but `opts` is present, auto-invokes  │
-  │          │                  │ `require(MAIN).setup(opts)`.  Can be a      │
-  │          │                  │ function returning a table.                 │
-  │ main     │ string           │ Override auto-detected Lua module name for  │
-  │          │                  │ `config`/`opts` auto-setup. Useful when     │
-  │          │                  │ the module name doesn't match the repo.     │
-  │ init     │ function         │ Called at startup before plugin loads:      │
-  │          │                  │ `function(plugin)`. Runs for all plugins    │
-  │          │                  │ regardless of `lazy` setting.               │
-  │ priority │ number           │ Load order (lower = earlier).              │
-  └──────────┴──────────────────┴─────────────────────────────────────────────┘
+  ┌──────────┬──────────────────┬──────────────────────────────────────────────┐
+  │ Field    │ Type             │ Description                                  │
+  ├──────────┼──────────────────┼──────────────────────────────────────────────┤
+  │ config   │ function,        │ Called after plugin loads:                   │
+  │          │ boolean          │ `function(plugin, opts)`.                    │
+  │          │                  │ `true` auto-calls `require(MAIN).setup()`.   │
+  │ opts     │ table, function  │ Options passed to `config`. If `config` is   │
+  │          │                  │ absent but `opts` is present, auto-invokes   │
+  │          │                  │ `require(MAIN).setup(opts)`.  Can be a       │
+  │          │                  │ function returning a table.                  │
+  │ main     │ string           │ Override auto-detected Lua module name for   │
+  │          │                  │ `config`/`opts` auto-setup. Useful when      │
+  │          │                  │ the module name doesn't match the repo.      │
+  │ init     │ function         │ Called at startup before plugin loads:       │
+  │          │                  │ `function(plugin)`. Runs for all plugins     │
+  │          │                  │ regardless of `lazy` setting.                │
+  │ priority │ number           │ Load order (lower = earlier).                │
+  └──────────┴──────────────────┴──────────────────────────────────────────────┘
 
   For zero-config plugins: >
     { "folke/todo-comments.nvim", config = true }
@@ -239,60 +239,60 @@ Table form: >
 
   Priority: `commit` > `tag` > `version` > `branch` > default branch HEAD.
 
-  ┌──────────┬──────────┬─────────────────────────────────────────────────────┐
-  │ Field    │ Type     │ Description                                         │
-  ├──────────┼──────────┼─────────────────────────────────────────────────────┤
-  │ commit   │ string   │ Exact commit SHA (40 hex chars). Highest priority.  │
-  │ tag      │ string   │ Exact tag pin (e.g. "v1.9.2").                     │
-  │ version  │ string   │ Semver range (e.g. "1.*", "^2.0", "~1.2.3").       │
-  │          │          │ Resolves to latest matching git tag. Pre-release    │
-  │          │          │ tags excluded unless range starts with pre-release. │
-  │ branch   │ string   │ Track a specific branch (rolling).                  │
-  └──────────┴──────────┴─────────────────────────────────────────────────────┘
+  ┌──────────┬──────────┬──────────────────────────────────────────────────────┐
+  │ Field    │ Type     │ Description                                          │
+  ├──────────┼──────────┼──────────────────────────────────────────────────────┤
+  │ commit   │ string   │ Exact commit SHA (40 hex chars). Highest priority.   │
+  │ tag      │ string   │ Exact tag pin (e.g. "v1.9.2").                       │
+  │ version  │ string   │ Semver range (e.g. "1.*", "^2.0", "~1.2.3").         │
+  │          │          │ Resolves to latest matching git tag. Pre-release     │
+  │          │          │ tags excluded unless range starts with pre-release.  │
+  │ branch   │ string   │ Track a specific branch (rolling).                   │
+  └──────────┴──────────┴──────────────────────────────────────────────────────┘
 
 ------------------------------------------------------------------------------
 4.5 Build Field                                        *packard-spec-build*
 
   Post-install/update build step:
 
-  ┌──────────┬────────────────────┬───────────────────────────────────────────┐
-  │ Type     │ Example            │ Description                               │
-  ├──────────┼────────────────────┼───────────────────────────────────────────┤
-  │ function │ `build = function( │ Lua function called with the plugin table │
-  │          │   p) ... end`      │                                           │
-  │ :Command │ `build = ":TSUpdate"` | Neovim command via `vim.cmd`             │
-  │ *.lua    │ `build = "build.lua"` | Lua file loaded from plugin directory     │
-  │ string   │ `build = "make"`   │ Shell command via `vim.system()`          │
-  │ list     │ `build = { "make", │ Multiple steps run sequentially          │
-  │          │   ":TSUpdate" }`   │                                           │
-  │ auto     │ (omitted)          │ Uses `build.lua` or `build/init.lua` if   │
-  │          │                    │ present                                    │
-  │ false    │ `build = false`    │ Explicitly skip build step                │
-  └──────────┴────────────────────┴───────────────────────────────────────────┘
+  ┌──────────┬──────────────────────┬──────────────────────────────────────────┐
+  │ Type     │ Example              │ Description                              │
+  ├──────────┼──────────────────────┼──────────────────────────────────────────┤
+  │ function │ `build = function(  │ Lua function called with the plugin table │
+  │          │   p) ... end`        │                                          │
+  │ :Command │ `build = ":TSUpdate"` │ Neovim command via `vim.cmd`            │
+  │ *.lua    │ `build = "build.lua"` │ Lua file loaded from plugin directory   │
+  │ string   │ `build = "make"`     │ Shell command via `vim.system()`         │
+  │ list     │ `build = { "make",`  │ Multiple steps run sequentially          │
+  │          │   ":TSUpdate" }`     │                                          │
+  │ auto     │ (omitted)            │ Uses `build.lua` or `build/init.lua` if  │
+  │          │                      │ present                                  │
+  │ false    │ `build = false`      │ Explicitly skip build step               │
+  └──────────┴──────────────────────┴──────────────────────────────────────────┘
 
 ------------------------------------------------------------------------------
 4.6 Gate Fields                                        *packard-spec-gate*
 
-  ┌─────────────────────┬────────────────────┬────────────────────────────────┐
-  │ Field               │ Type               │ Description                    │
-  ├─────────────────────┼────────────────────┼────────────────────────────────┤
-  │ enabled             │ boolean, function  │ Exclude plugin from spec       │
-  │                     │                    │ entirely. `false` or           │
+  ┌─────────────────────┬────────────────────┬─────────────────────────────────┐
+  │ Field               │ Type               │ Description                     │
+  ├─────────────────────┼────────────────────┼─────────────────────────────────┤
+  │ enabled             │ boolean, function  │ Exclude plugin from spec        │
+  │                     │                    │ entirely. `false` or            │
   │                     │                    │ `fun():boolean` returning       │
-  │                     │                    │ `false` drops the plugin.      │
-  │ cond                │ boolean, function  │ Plugin installed but not       │
-  │                     │                    │ loaded. `fun(plugin):boolean`  │
-  │                     │                    │ or `fun(plugin):string`.       │
-  │                     │                    │ String return shown as         │
-  │                     │                    │ notification. Evaluated once   │
-  │                     │                    │ at setup().                    │
-  │ dependencies        │ string[], table[]  │ Auto-injected if not declared. │
-  │                     │                    │ Topological sort ensures       │
-  │                     │                    │ deps load first.               │
-  │ minimum_release_age │ number             │ Per-plugin cooldown override   │
-  │                     │                    │ in days. Overrides global      │
-  │                     │                    │ default. `0` = disabled.       │
-  └─────────────────────┴────────────────────┴────────────────────────────────┘
+  │                     │                    │ `false` drops the plugin.       │
+  │ cond                │ boolean, function  │ Plugin installed but not        │
+  │                     │                    │ loaded. `fun(plugin):boolean`   │
+  │                     │                    │ or `fun(plugin):string`.        │
+  │                     │                    │ String return shown as          │
+  │                     │                    │ notification. Evaluated once    │
+  │                     │                    │ at setup().                     │
+  │ dependencies        │ string[], table[]  │ Auto-injected if not declared.  │
+  │                     │                    │ Topological sort ensures        │
+  │                     │                    │ deps load first.                │
+  │ minimum_release_age │ number             │ Per-plugin cooldown override    │
+  │                     │                    │ in days. Overrides global       │
+  │                     │                    │ default. `0` = disabled.        │
+  └─────────────────────┴────────────────────┴─────────────────────────────────┘
 
 ==============================================================================
 5. DIRECTORY-BASED SPEC FILES                          *packard-specs-dir*
@@ -520,39 +520,39 @@ Table form: >
 <
   Available groups:
 
-  ┌──────────────────────────┬───────────────────────────────────────────────┐
-  │ Group                    │ Default link                                  │
-  ├──────────────────────────┼───────────────────────────────────────────────┤
-  │ PackardHeader            │ Normal                                        │
-  │ PackardH2                │ Comment                                       │
-  │ PackardComment           │ Comment                                       │
-  │ PackardButton            │ CursorLine                                    │
-  │ PackardButtonActive      │ Visual                                        │
-  │ PackardPluginName        │ Normal                                        │
-  │ PackardPluginNameSelected│ Visual                                        │
-  │ PackardRowSelected       │ Visual                                        │
-  │ PackardCommit            │ Normal                                        │
-  │ PackardCommitHash        │ Identifier                                    │
-  │ PackardCommitAge         │ (none)                                        │
-  │ PackardStatusOk          │ DiagnosticOk                                  │
-  │ PackardStatusWarn        │ DiagnosticWarn                                │
-  │ PackardStatusError       │ DiagnosticError                               │
-  │ PackardEligible          │ Normal                                        │
-  │ PackardCooldown          │ Normal                                        │
-  │ PackardKeyHint           │ @punctuation.special                          │
-  │ PackardDivider           │ Normal                                        │
-  │ PackardProgressDone      │ Normal                                        │
-  │ PackardProgressTodo      │ Normal                                        │
-  │ PackardAIRiskLow         │ DiagnosticInfo                                │
-  │ PackardAIRiskMedium      │ DiagnosticWarn                                │
-  │ PackardAIRiskHigh        │ DiagnosticError                               │
-  │ PackardAIValue           │ (none)                                        │
-  │ PackardAIBorder          │ (none)                                        │
-  │ PackardHelpSection       │ Title                                         │
-  │ PackardHelpKey           │ Special                                       │
-  │ PackardHelpDesc          │ Comment                                       │
-  │ PackardHelpIntro         │ Comment                                       │
-  └──────────────────────────┴───────────────────────────────────────────────┘
+  ┌──────────────────────────┬─────────────────────────────────────────────────┐
+  │ Group                    │ Default link                                    │
+  ├──────────────────────────┼─────────────────────────────────────────────────┤
+  │ PackardHeader            │ Normal                                          │
+  │ PackardH2                │ Comment                                         │
+  │ PackardComment           │ Comment                                         │
+  │ PackardButton            │ CursorLine                                      │
+  │ PackardButtonActive      │ Visual                                          │
+  │ PackardPluginName        │ Normal                                          │
+  │ PackardPluginNameSelected│ Visual                                          │
+  │ PackardRowSelected       │ Visual                                          │
+  │ PackardCommit            │ Normal                                          │
+  │ PackardCommitHash        │ Identifier                                      │
+  │ PackardCommitAge         │ (none)                                          │
+  │ PackardStatusOk          │ DiagnosticOk                                    │
+  │ PackardStatusWarn        │ DiagnosticWarn                                  │
+  │ PackardStatusError       │ DiagnosticError                                 │
+  │ PackardEligible          │ Normal                                          │
+  │ PackardCooldown          │ Normal                                          │
+  │ PackardKeyHint           │ @punctuation.special                            │
+  │ PackardDivider           │ Normal                                          │
+  │ PackardProgressDone      │ Normal                                          │
+  │ PackardProgressTodo      │ Normal                                          │
+  │ PackardAIRiskLow         │ DiagnosticInfo                                  │
+  │ PackardAIRiskMedium      │ DiagnosticWarn                                  │
+  │ PackardAIRiskHigh        │ DiagnosticError                                 │
+  │ PackardAIValue           │ (none)                                          │
+  │ PackardAIBorder          │ (none)                                          │
+  │ PackardHelpSection       │ Title                                           │
+  │ PackardHelpKey           │ Special                                         │
+  │ PackardHelpDesc          │ Comment                                         │
+  │ PackardHelpIntro         │ Comment                                         │
+  └──────────────────────────┴─────────────────────────────────────────────────┘
 
 ==============================================================================
 12. DEVELOPER TOOLS                                      *packard-develop*
