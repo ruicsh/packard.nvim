@@ -286,26 +286,6 @@ function M.setup_lazy_load(plugins, load_fn)
 
                   local stub_desc = real_map_opts.desc
 
-                   -- invoke_rhs calls the real mapping's action directly, avoiding a
-                   -- nvim_feedkeys round-trip that can be intercepted by buffer-local expr
-                  -- mappings (e.g. blink.cmp) that captured a stale reference to this stub.
-                  local function invoke_rhs()
-                    if type(capture_rhs) == "function" then
-                      -- If the real mapping is an expr mapping, it returns a string to be typed.
-                      -- Otherwise it returns nil/nothing and the stub effectively inserts nothing.
-                      return capture_rhs()
-                    elseif type(capture_rhs) == "string" then
-                      -- Return the string directly. The stub mapping has replace_keycodes
-                      -- matching the real mapping (default true), so "<Left>" will be
-                      -- translated correctly by Neovim.
-                      return capture_rhs
-                    else
-                      -- No RHS (trigger-only): return the LHS with <Ignore> so it's
-                      -- replayed through the mapping system.
-                      return "<Ignore>" .. capture_lhs
-                    end
-                  end
-
                   -- Track stub for centralized cleanup
                   _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
                   table.insert(_plugin_stubs[plugin.name].cleanups, function()
@@ -332,17 +312,33 @@ function M.setup_lazy_load(plugins, load_fn)
                     )
 
                     -- Step 1: Cleanup all stubs for this plugin (including this one)
+                    -- This replaces the expr stub with the real mapping immediately.
                     disable_triggers(plugin.name)
 
                     -- Step 2: Load the plugin
                     load_fn(plugin)
                     _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
 
-                    -- Step 3: Invoke the real mapping directly instead of replaying
-                    -- the LHS through nvim_feedkeys.  Replayed keys can be intercepted
-                    -- by buffer-local mappings that captured a stale reference to this
-                    -- stub at setup time; direct invocation bypasses those handlers.
-                    return invoke_rhs()
+                    -- Step 3: Defer the RHS invocation to escape textlock.
+                    -- This ensures we can change buffers/windows (e.g. Oil, Telescope)
+                    -- which is forbidden inside the expr mapping callback.
+                    vim.schedule(function()
+                      if type(capture_rhs) == "function" then
+                        local res = capture_rhs()
+                        if type(res) == "string" and res ~= "" then
+                          local keys = vim.api.nvim_replace_termcodes(res, true, false, true)
+                          vim.api.nvim_feedkeys(keys, "m", false)
+                        end
+                      elseif type(capture_rhs) == "string" then
+                        local keys = vim.api.nvim_replace_termcodes(capture_rhs, true, false, true)
+                        vim.api.nvim_feedkeys(keys, "m", false)
+                      else
+                        -- Replay LHS for trigger-only keys to hit the real mapping
+                        local keys = vim.api.nvim_replace_termcodes(capture_lhs, true, false, true)
+                        vim.api.nvim_feedkeys(keys, "m", false)
+                      end
+                    end)
+                    return "<Ignore>"
                   end, {
                     expr = true,
                     desc = stub_desc,
