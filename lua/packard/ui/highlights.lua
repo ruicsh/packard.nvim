@@ -166,7 +166,88 @@ return function(UI)
           end_col = #line,
           hl_group = "PackardComment",
         })
-      elseif line:match("^    %s*%S") and not line:match("^    [●⚠⏳☒☐]") then
+      elseif UI.line_map[i] ~= nil then
+        -- Plugin rows (detected via line_map; must come before generic
+        -- 4-space-indent check since plugin rows also start with 4 spaces)
+        -- Plugin Name (icons removed; line starts with 4 spaces + 1 space = 5)
+        local name_start = 5
+        -- Use a pattern to find the first double-space or multiple spaces that separate name from commit
+        local name_end = line:find("  ", name_start) or #line
+        local owner_repo = UI.line_map[i]
+        local is_selected = (owner_repo and owner_repo == UI._cursor_repo)
+        local hl_name = is_selected and "PackardPluginNameSelected" or "PackardPluginName"
+
+        -- Full-row selected background at low priority so individual element highlights override foreground
+        if is_selected then
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
+            end_col = #line,
+            hl_group = "PackardRowSelected",
+            priority = 50,
+          })
+        end
+
+        vim.api.nvim_buf_set_extmark(buf, ns, i - 1, name_start, {
+          end_col = name_end,
+          hl_group = hl_name,
+          priority = is_selected and 200 or 100,
+        })
+
+        -- 3. Commit (find next word) — only for tabs that have commit/target fields
+        local commit_start = line:find("%w", name_end)
+        if commit_start and UI.tab ~= "clean" then
+          local commit_end = line:find(" ", commit_start) or (commit_start + 7)
+          commit_end = math.min(commit_end, #line)
+          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start - 1, {
+            end_col = commit_end,
+            hl_group = "PackardCommitHash",
+          })
+
+          -- 4. Branch (dim if default) — installed tab only
+          if UI.tab ~= "pending" and UI.tab ~= "clean" then
+            local branch_start = line:find("%S", commit_end)
+            if branch_start then
+              local branch_word = line:match("%S+", branch_start)
+              if branch_word == "(default)" then
+                vim.api.nvim_buf_set_extmark(buf, ns, i - 1, branch_start - 1, {
+                  end_col = branch_start - 1 + #branch_word,
+                  hl_group = "PackardComment",
+                })
+              end
+            end
+          end
+
+          -- 5. Risk (if in pending tab)
+          if UI.tab == "pending" then
+            local risk_start = line:find("%S", commit_end)
+            if risk_start then
+              local risk_end = line:find(" ", risk_start)
+              local risk = line:sub(risk_start, risk_end and risk_end - 1 or #line)
+              local hl = "PackardAIRiskLow"
+              if risk == "medium" then
+                hl = "PackardAIRiskMedium"
+              elseif risk == "high" then
+                hl = "PackardAIRiskHigh"
+              end
+              vim.api.nvim_buf_set_extmark(buf, ns, i - 1, risk_start - 1, {
+                end_col = risk_start - 1 + #risk,
+                hl_group = hl,
+              })
+
+              -- 5. Cooldown/Eligible status
+              if risk_end then
+                local status_start = line:find("%S", risk_end)
+                if status_start then
+                  local status_end = line:find("  ", status_start)
+                  vim.api.nvim_buf_set_extmark(buf, ns, i - 1, status_start - 1, {
+                    end_col = status_end or #line,
+                    hl_group = line:match("Eligible") and "PackardEligible" or "PackardCooldown",
+                  })
+                end
+              end
+            end
+          end
+        end
+      elseif line:match("^    %s*%S") then
         -- Expansion content (non-plugin-row 4-space indent lines)
         local label_col = 4 -- 0-indexed byte offset of content after indent
 
@@ -288,102 +369,6 @@ return function(UI)
                 hl_group = hl,
                 priority = 200,
               })
-            end
-          end
-        end
-      elseif line:match("^    [●⚠⏳☒☐]") then -- Plugin rows
-        -- 1. Icon
-        local icon_match = line:match("^    (%S+)")
-        if icon_match then
-          local icon_len = #icon_match
-          local hl_icon = "PackardStatusOk"
-          if line:match("⚠") then
-            hl_icon = "PackardStatusError"
-          elseif line:match("☒") or line:match("☐") then
-            hl_icon = "PackardComment"
-          end
-
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 4, {
-            end_col = 4 + icon_len,
-            hl_group = hl_icon,
-          })
-
-          -- 2. Plugin Name
-          local name_start = 4 + icon_len + 1
-          -- Use a pattern to find the first double-space or multiple spaces that separate name from commit
-          local name_end = line:find("  ", name_start) or #line
-          local owner_repo = UI.line_map[i]
-          local is_selected = (owner_repo and owner_repo == UI._cursor_repo)
-          local hl_name = is_selected and "PackardPluginNameSelected" or "PackardPluginName"
-
-          -- Full-row selected background at low priority so individual element highlights override foreground
-          if is_selected then
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, 0, {
-              end_col = #line,
-              hl_group = "PackardRowSelected",
-              priority = 50,
-            })
-          end
-
-          vim.api.nvim_buf_set_extmark(buf, ns, i - 1, name_start, {
-            end_col = name_end,
-            hl_group = hl_name,
-            priority = is_selected and 200 or 100,
-          })
-
-          -- 3. Commit (find next word) — only for tabs that have commit/target fields
-          local commit_start = line:find("%w", name_end)
-          if commit_start and UI.tab ~= "clean" then
-            local commit_end = line:find(" ", commit_start) or (commit_start + 7)
-            commit_end = math.min(commit_end, #line)
-            vim.api.nvim_buf_set_extmark(buf, ns, i - 1, commit_start - 1, {
-              end_col = commit_end,
-              hl_group = "PackardCommitHash",
-            })
-
-            -- 4. Branch (dim if default) — installed tab only
-            if UI.tab ~= "pending" and UI.tab ~= "clean" then
-              local branch_start = line:find("%S", commit_end)
-              if branch_start then
-                local branch_word = line:match("%S+", branch_start)
-                if branch_word == "(default)" then
-                  vim.api.nvim_buf_set_extmark(buf, ns, i - 1, branch_start - 1, {
-                    end_col = branch_start - 1 + #branch_word,
-                    hl_group = "PackardComment",
-                  })
-                end
-              end
-            end
-
-            -- 5. Risk (if in pending tab)
-            if UI.tab == "pending" then
-              local risk_start = line:find("%S", commit_end)
-              if risk_start then
-                local risk_end = line:find(" ", risk_start)
-                local risk = line:sub(risk_start, risk_end and risk_end - 1 or #line)
-                local hl = "PackardAIRiskLow"
-                if risk == "medium" then
-                  hl = "PackardAIRiskMedium"
-                elseif risk == "high" then
-                  hl = "PackardAIRiskHigh"
-                end
-                vim.api.nvim_buf_set_extmark(buf, ns, i - 1, risk_start - 1, {
-                  end_col = risk_start - 1 + #risk,
-                  hl_group = hl,
-                })
-
-                -- 5. Cooldown/Eligible status
-                if risk_end then
-                  local status_start = line:find("%S", risk_end)
-                  if status_start then
-                    local status_end = line:find("  ", status_start)
-                    vim.api.nvim_buf_set_extmark(buf, ns, i - 1, status_start - 1, {
-                      end_col = status_end or #line,
-                      hl_group = line:match("Eligible") and "PackardEligible" or "PackardCooldown",
-                    })
-                  end
-                end
-              end
             end
           end
         end

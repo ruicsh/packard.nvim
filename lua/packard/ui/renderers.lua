@@ -86,8 +86,8 @@ return function(UI)
       table.insert(lines, "")
     end
 
-    render_section("Installed", grouped.installed, "●")
-    render_section("Anomalies", grouped.anomalies, "⚠︎")
+    render_section("Installed", grouped.installed, "")
+    render_section("Anomalies", grouped.anomalies, "")
   end
 
   ---Render the Pending tab: eligible and in-cooldown plugins with pending
@@ -204,8 +204,8 @@ return function(UI)
       table.insert(lines, "")
     end
 
-    render_section("Eligible for Review", status.eligible, "●")
-    render_section("In Cooldown", status.cooldown, "⏳")
+    render_section("Eligible for Review", status.eligible, "")
+    render_section("In Cooldown", status.cooldown, "")
   end
 
   ---Render the Summary tab: update history grouped by plugin, newest first.
@@ -278,7 +278,7 @@ return function(UI)
       table.insert(lines, string.format("  %s (%d)", title, #items))
       for _, item in ipairs(items) do
         local is_selected = UI.selected_orphans[item]
-        local icon = is_selected and "☒" or "☐"
+        local icon = ""
         table.insert(lines, string.format("    %s %s", icon, item))
         UI.line_map[#lines] = item
       end
