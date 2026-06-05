@@ -328,10 +328,10 @@ function M.setup_lazy_load(plugins, load_fn)
                   _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
                   table.insert(_plugin_stubs[plugin.name].cleanups, function()
                     if capture_rhs then
-                      -- lazy.nvim compatibility: delete first, then set.
-                      -- In some Neovim versions/scenarios, just calling set() on an active
-                      -- expr mapping might not replace it reliably for the current sequence.
-                      pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
+                      -- vim.keymap.set replaces an active expr mapping immediately.
+                      -- Do NOT vim.keymap.del first — inside an expr callback, del is
+                      -- deferred by Neovim and would remove the real mapping after
+                      -- our callback returns, creating an infinite loop.
                       vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
                     else
                       -- No RHS to restore; delete the stub immediately.
