@@ -2187,8 +2187,8 @@ Helpers.describe("Lazy Loading", function()
     -- Verify: the plugin was loaded
     Helpers.expect(package.loaded["replaymod"]).to_be_truthy()
 
-    -- Verify: the side effect WAS called (replay is now immediate via feedkeys "i")
-    Helpers.expect(_G._replay_side_effect).to_be(true)
+    -- Verify: the side effect was NOT called (replay is deferred via vim.schedule)
+    Helpers.expect(_G._replay_side_effect).to_be(false)
 
     -- Verify the real mapping is now set (non-expr)
     local real_map = vim.fn.maparg("<leader>fr", "n", false, true)
@@ -2255,8 +2255,8 @@ Helpers.describe("Lazy Loading", function()
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<a-b>", true, false, true), "x", false)
 
     Helpers.expect(package.loaded["insertmod"]).to_be_truthy()
-    -- Verify: side effect is immediate
-    Helpers.expect(_G._insert_side_effect).to_be(true)
+    -- Verify: side effect is deferred (vim.schedule)
+    Helpers.expect(_G._insert_side_effect).to_be(false)
 
     -- Verify the real mapping is now set
     local real_map = vim.fn.maparg("<a-b>", "i", false, true)
@@ -2323,8 +2323,8 @@ Helpers.describe("Lazy Loading", function()
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(":<a-c>", true, false, true), "x", false)
 
     Helpers.expect(package.loaded["cmdmod"]).to_be_truthy()
-    -- Verify: side effect is immediate
-    Helpers.expect(_G._cmd_side_effect).to_be(true)
+    -- Verify: side effect is deferred (vim.schedule)
+    Helpers.expect(_G._cmd_side_effect).to_be(false)
 
     -- Verify the real mapping is now set
     local real_map = vim.fn.maparg("<a-c>", "c", false, true)
@@ -2806,9 +2806,9 @@ Helpers.describe("Lazy Loading", function()
     end, { buffer = 0, expr = true })
 
     -- 3. Call the stub directly (simulating what blink.cmp's fallback does).
-    --    The stub loads the plugin and feeds "<Ignore><c-e>" via nvim_feedkeys.
-    --    In headless mode the replayed key is queued but not processed, so no
-    --    side effect.
+    --    The stub loads the plugin and schedules the replay via vim.schedule.
+    --    In headless mode the scheduled callback is queued but not processed,
+    --    so no side effect.
     global_stub.callback()
 
     Helpers.expect(package.loaded["blinksim"]).to_be_truthy()
@@ -2817,8 +2817,9 @@ Helpers.describe("Lazy Loading", function()
     -- 4. Call the stub callback again manually.
     --    After the first call the cleanup already replaced the stub mapping
     --    with the real mapping, so calling the old captured callback is a
-    --    no-op that still feeds the replay keys.  The stub returns nil (the
-    --    replay is done via nvim_feedkeys, not as the expr return value).
+    --    no-op that schedules another replay (already loaded, skip).
+    --    The stub returns nil (the replay is done via vim.schedule, not
+    --    as the expr return value).
     local result = global_stub.callback()
     Helpers.expect(result).to_be_nil()
     Helpers.expect(_G._blink_side_effect_count).to_be(0)

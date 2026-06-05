@@ -356,16 +356,28 @@ function M.setup_lazy_load(plugins, load_fn)
                     load_fn(plugin)
                     _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
 
-                    -- Step 3: Replay the keypress synchronously to trigger the real mapping.
-                    -- This matches lazy.nvim's synchronous feedkeys behavior.
-                    if capture_mode:sub(-1) == "a" then
-                      -- Abbreviations need extra care
-                      capture_lhs = capture_lhs .. "<C-]>"
-                    end
-                    local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
-                    vim.api.nvim_feedkeys(feed, "i", false)
-
-                    -- Return nil so the expr mapping itself feeds nothing.
+                    -- Step 3: Defer RHS invocation to escape textlock and ensure
+                    -- the mapping change (disable_triggers) has taken effect.
+                    -- vim.keymap.set inside an expr callback may not replace a
+                    -- global mapping until after the callback returns; vim.schedule
+                    -- ensures the real mapping is active before the replayed key
+                    -- is processed, preventing infinite re-invocation.
+                    vim.schedule(function()
+                      if type(capture_rhs) == "function" then
+                        local res = capture_rhs()
+                        if type(res) == "string" and res ~= "" then
+                          local keys = vim.api.nvim_replace_termcodes(res, true, false, true)
+                          vim.api.nvim_feedkeys(keys, "m", false)
+                        end
+                      elseif type(capture_rhs) == "string" then
+                        local keys = vim.api.nvim_replace_termcodes(capture_rhs, true, false, true)
+                        vim.api.nvim_feedkeys(keys, "m", false)
+                      else
+                        -- Trigger-only keys: replay LHS to hit the real mapping
+                        local keys = vim.api.nvim_replace_termcodes(capture_lhs, true, false, true)
+                        vim.api.nvim_feedkeys(keys, "m", false)
+                      end
+                    end)
                     return
                   end, {
                     expr = true,
