@@ -189,11 +189,34 @@ function M.setup_lazy_load(plugins, load_fn)
             tostring(plugin.is_local),
             plugin.dir or "(none)"
           )
+          -- Snapshot package.loaded before calling the function so we can detect
+          -- if it does require() for the plugin's own module.  When that happens,
+          -- lazy.nvim loads the plugin immediately (via its require handler) and
+          -- we must do the same — otherwise setup() never runs.
+          local pre_loaded = {}
+          for k in pairs(package.loaded) do
+            pre_loaded[k] = true
+          end
           local ok, result = pcall(resolved)
           if ok then
             resolved = result
             local count = type(resolved) == "table" and #resolved or 1
             _debug_msg("[packard] keys fn OK for '%s': %d entry(ies)", plugin.name, count)
+
+            -- Detect require in keys function: if the plugin's main module was
+            -- loaded during resolution, immediately load the plugin so setup()
+            -- runs and autocmds are registered.
+            if not plugin._cond then
+              local main_mod = plugin.main or plugin.name:gsub("%.nvim$", "")
+              if package.loaded[main_mod] and not pre_loaded[main_mod] then
+                _debug_msg(
+                  "[packard] keys fn required '%s' — eager-loading '%s'",
+                  main_mod,
+                  plugin.name
+                )
+                load_fn(plugin)
+              end
+            end
           else
             _debug_msg("[packard] keys fn ERROR for '%s': %s", plugin.name, tostring(result))
             resolved = nil
