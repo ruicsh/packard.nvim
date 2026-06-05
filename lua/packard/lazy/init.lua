@@ -290,14 +290,13 @@ function M.setup_lazy_load(plugins, load_fn)
                   _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
                   table.insert(_plugin_stubs[plugin.name].cleanups, function()
                     if capture_rhs then
-                      -- vim.keymap.set replaces any existing mapping (including expr stubs)
-                      -- immediately. No vim.keymap.del needed — inside an expr callback, del
-                      -- is deferred by Neovim and would remove the real mapping we just set.
+                      -- lazy.nvim compatibility: delete first, then set.
+                      -- In some Neovim versions/scenarios, just calling set() on an active
+                      -- expr mapping might not replace it reliably for the current sequence.
+                      pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
                       vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
                     else
                       -- No RHS to restore; delete the stub immediately.
-                      -- pcall handles any Neovim limitation with deleting a mapping
-                      -- inside its own expr callback.
                       pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
                     end
                   end)
@@ -311,34 +310,25 @@ function M.setup_lazy_load(plugins, load_fn)
                       tostring(capture_rhs)
                     )
 
-                    -- Step 1: Cleanup all stubs for this plugin (including this one)
-                    -- This replaces the expr stub with the real mapping immediately.
+                    -- Step 1: Cleanup all stubs for this plugin (including this one).
+                    -- Matches lazy.nvim's Handler:_del(keys) + Handler.disable(plugin)
                     disable_triggers(plugin.name)
 
                     -- Step 2: Load the plugin
                     load_fn(plugin)
                     _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
 
-                    -- Step 3: Defer the RHS invocation to escape textlock.
-                    -- This ensures we can change buffers/windows (e.g. Oil, Telescope)
-                    -- which is forbidden inside the expr mapping callback.
-                    vim.schedule(function()
-                      if type(capture_rhs) == "function" then
-                        local res = capture_rhs()
-                        if type(res) == "string" and res ~= "" then
-                          local keys = vim.api.nvim_replace_termcodes(res, true, false, true)
-                          vim.api.nvim_feedkeys(keys, "m", false)
-                        end
-                      elseif type(capture_rhs) == "string" then
-                        local keys = vim.api.nvim_replace_termcodes(capture_rhs, true, false, true)
-                        vim.api.nvim_feedkeys(keys, "m", false)
-                      else
-                        -- Replay LHS for trigger-only keys to hit the real mapping
-                        local keys = vim.api.nvim_replace_termcodes(capture_lhs, true, false, true)
-                        vim.api.nvim_feedkeys(keys, "m", false)
-                      end
-                    end)
-                    return "<Ignore>"
+                    -- Step 3: Replay the keypress synchronously to trigger the real mapping.
+                    -- This matches lazy.nvim's synchronous feedkeys behavior.
+                    if capture_mode:sub(-1) == "a" then
+                      -- Abbreviations need extra care
+                      capture_lhs = capture_lhs .. "<C-]>"
+                    end
+                    local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. capture_lhs, true, true, true)
+                    vim.api.nvim_feedkeys(feed, "i", false)
+
+                    -- Return nil so the expr mapping itself feeds nothing.
+                    return
                   end, {
                     expr = true,
                     desc = stub_desc,

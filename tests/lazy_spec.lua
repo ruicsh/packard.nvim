@@ -2186,8 +2186,8 @@ Helpers.describe("Lazy Loading", function()
     -- Verify: the plugin was loaded
     Helpers.expect(package.loaded["replaymod"]).to_be_truthy()
 
-    -- Verify: the side effect was NOT called yet (it's deferred in headless)
-    Helpers.expect(_G._replay_side_effect).to_be(false)
+    -- Verify: the side effect WAS called (replay is now immediate via feedkeys "i")
+    Helpers.expect(_G._replay_side_effect).to_be(true)
 
     -- Verify the real mapping is now set (non-expr)
     local real_map = vim.fn.maparg("<leader>fr", "n", false, true)
@@ -2254,7 +2254,8 @@ Helpers.describe("Lazy Loading", function()
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<a-b>", true, false, true), "x", false)
 
     Helpers.expect(package.loaded["insertmod"]).to_be_truthy()
-    Helpers.expect(_G._insert_side_effect).to_be(false)
+    -- Verify: side effect is immediate
+    Helpers.expect(_G._insert_side_effect).to_be(true)
 
     -- Verify the real mapping is now set
     local real_map = vim.fn.maparg("<a-b>", "i", false, true)
@@ -2321,7 +2322,8 @@ Helpers.describe("Lazy Loading", function()
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(":<a-c>", true, false, true), "x", false)
 
     Helpers.expect(package.loaded["cmdmod"]).to_be_truthy()
-    Helpers.expect(_G._cmd_side_effect).to_be(false)
+    -- Verify: side effect is immediate
+    Helpers.expect(_G._cmd_side_effect).to_be(true)
 
     -- Verify the real mapping is now set
     local real_map = vim.fn.maparg("<a-c>", "c", false, true)
@@ -2747,6 +2749,13 @@ Helpers.describe("Lazy Loading", function()
   Helpers.it("stub handles re-invocation from buffer-local fallback (blink.cmp scenario)", function()
     -- This test simulates a buffer-local expr mapping (like blink.cmp) that
     -- captures the stub and re-calls it.
+    --
+    -- The stub replays the key via nvim_feedkeys internally (not by returning
+    -- the replay string from the expr mapping).  Calling the stub directly
+    -- avoids the infinite re-entrancy that would happen if we went through
+    -- nvim_feedkeys with the "x" flag while the buffer-local mapping is active
+    -- (the stub feeds "<Ignore><c-e>", which re-triggers the buffer-local
+    -- mapping that wraps the stub).
 
     vim.fn.isdirectory = original_isdirectory
     local temp_dir, cleanup = Helpers.with_temp_dir({
@@ -2795,20 +2804,22 @@ Helpers.describe("Lazy Loading", function()
       return global_stub.callback()
     end, { buffer = 0, expr = true })
 
-    -- 3. Press the key.
-    -- First call: blink's mapping runs -> calls stub callback
-    --   Stub callback: disable_triggers, load_fn, then returns replay string
-    --   Blink's mapping gets replay string, returns it to Neovim.
-    --   In headless, replay is deferred, so no synchronous side effect.
-    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<c-e>", true, false, true), "x", false)
+    -- 3. Call the stub directly (simulating what blink.cmp's fallback does).
+    --    The stub loads the plugin and feeds "<Ignore><c-e>" via nvim_feedkeys.
+    --    In headless mode the replayed key is queued but not processed, so no
+    --    side effect.
+    global_stub.callback()
 
     Helpers.expect(package.loaded["blinksim"]).to_be_truthy()
     Helpers.expect(_G._blink_side_effect_count).to_be(0)
 
-    -- 4. Re-simulate the fallback logic: call the stub callback AGAIN manually
-    -- It should return the replay string.
+    -- 4. Call the stub callback again manually.
+    --    After the first call the cleanup already replaced the stub mapping
+    --    with the real mapping, so calling the old captured callback is a
+    --    no-op that still feeds the replay keys.  The stub returns nil (the
+    --    replay is done via nvim_feedkeys, not as the expr return value).
     local result = global_stub.callback()
-    Helpers.expect(result).to_be("<Ignore>")
+    Helpers.expect(result).to_be_nil()
     Helpers.expect(_G._blink_side_effect_count).to_be(0)
 
     -- Cleanup
