@@ -2838,6 +2838,61 @@ Helpers.describe("Lazy Loading", function()
     cleanup()
   end)
 
+  Helpers.it("command stub replays without E464 when plugin defines same-named command", function()
+    -- Temporarily un-mock isdirectory so with_temp_dir creates subdirectories
+    vim.fn.isdirectory = original_isdirectory
+
+    local local_dir, cleanup = Helpers.with_temp_dir({
+      ["plugin/init.lua"] = 'vim.cmd("command! TestCmd lua _G._testcmd_handled = _G._testcmd_handled + 1")',
+      ["lua/testcmd/init.lua"] = [[
+        local M = {}
+        function M.setup() end
+        return M
+      ]],
+    })
+
+    vim.fn.isdirectory = function()
+      return 1
+    end
+
+    _G._testcmd_handled = 0
+
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          dir = local_dir,
+          name = "testcmd",
+          cmd = "TestCmd",
+        },
+      },
+    })
+
+    -- Verify: stub command exists
+    local cmds = vim.api.nvim_get_commands({})
+    Helpers.expect(cmds.TestCmd).to_be_truthy()
+
+    -- 1st invocation: fires the stub → loads plugin → schedules replay
+    local ok, err = pcall(vim.cmd, "TestCmd")
+    Helpers.expect(ok).to_be(true, "stub should not error (E464): " .. tostring(err))
+
+    -- Verify: plugin loaded
+    Helpers.expect(package.loaded["packard.plugins.testcmd"]).to_be_truthy()
+
+    -- The vim.schedule replay hasn't fired yet in headless mode.
+    -- Fire the command again — the stub is gone, so the real command runs.
+    ok, err = pcall(vim.cmd, "TestCmd")
+    Helpers.expect(ok).to_be(true, "real command should fire without error: " .. tostring(err))
+
+    -- Verify: the real command handler executed
+    Helpers.expect(_G._testcmd_handled > 0).to_be(true, "handler should have been invoked")
+
+    -- Cleanup
+    _G._testcmd_handled = nil
+    pcall(vim.api.nvim_del_user_command, "TestCmd")
+    cleanup()
+  end)
+
   -- Restore mocks
   vim.pack.add = original_pack_add
   vim.fn.isdirectory = original_isdirectory

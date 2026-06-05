@@ -416,9 +416,13 @@ function M.setup_lazy_load(plugins, load_fn)
             disable_triggers(plugin.name)
             -- Step 2: Load the plugin
             load_fn(plugin)
-            -- Step 3: Replay the command
+            -- Step 3: Defer replay to next event loop iteration so the stub is
+            -- fully cleaned up and the loaded plugin's real commands are registered.
             local bang = args.bang and "!" or ""
-            vim.cmd(cmd .. bang .. " " .. args.args)
+            local replayed = cmd .. bang .. (args.args and #args.args > 0 and " " .. args.args or "")
+            vim.schedule(function()
+              vim.cmd(replayed)
+            end)
           end, {
             bang = true,
             nargs = "*",
