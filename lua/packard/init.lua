@@ -74,6 +74,9 @@ end
 ---Initialize packard.nvim
 ---@param opts table
 function M.setup(opts)
+  if opts and opts.debug then
+    lazy._debug = true
+  end
   return core_setup.setup(opts, M)
 end
 

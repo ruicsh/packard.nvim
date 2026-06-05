@@ -8,11 +8,10 @@ local M = {}
 
 M._debug = false
 local function _debug_msg(fmt, ...)
-  if not M._debug then
+  if not M._debug and not vim.g.packard_debug then
     return
   end
-  --[[@diagnostic disable-next-line: redundant-parameter]]
-  vim.api.nvim_echo({ { string.format(fmt, ...), "None" } }, true, {})
+  print(string.format(fmt, ...))
 end
 
 ---@type table<string, { cleanups: function[] }>
@@ -100,7 +99,10 @@ function M.load_and_config(plugin, plugins)
   else
     _debug_msg("[packard] load_and_config: remote plugin '%s' — calling packadd", plugin.name)
     -- bang=false for packadd ensures plugin/ and ftdetect/ are sourced
-    pcall(vim.cmd.packadd, plugin.name)
+    local ok, err = pcall(vim.cmd.packadd, plugin.name)
+    if not ok then
+      _debug_msg("[packard] load_and_config: packadd failed for '%s': %s", plugin.name, tostring(err))
+    end
   end
 
   -- Resolve opts: lazy.nvim convention — opts can be a function returning a table
@@ -118,18 +120,30 @@ function M.load_and_config(plugin, plugins)
   -- Run config function if defined, or auto-setup
   if type(plugin.config) == "function" then
     -- Explicit config function — call with (plugin, opts)
+    _debug_msg("[packard] calling explicit config for '%s'", plugin.name)
     plugin.config(plugin, opts or {})
   elseif plugin.config == true or (plugin.config == nil and opts ~= nil) then
     -- Auto-config: lazy.nvim convention
     --   config = true → always calls require(MAIN).setup(opts or {})
     --   opts present + no config → calls require(MAIN).setup(opts or {})
     local modname = plugin.main or plugin.name:gsub("%.nvim$", "")
+    _debug_msg("[packard] auto-config: requiring '%s' for '%s'", modname, plugin.name)
     local ok, mod = pcall(require, modname)
     if not ok and not plugin.main and modname ~= plugin.name then
+      _debug_msg("[packard] auto-config: retry require '%s' for '%s'", plugin.name, plugin.name)
       ok, mod = pcall(require, plugin.name)
     end
     if ok and type(mod) == "table" and type(mod.setup) == "function" then
+      _debug_msg("[packard] auto-config: calling '%s'.setup()", modname)
       mod.setup(opts or {})
+    else
+      if not ok then
+        _debug_msg("[packard] auto-config: require failed: %s", tostring(mod))
+      elseif type(mod) ~= "table" then
+        _debug_msg("[packard] auto-config: module is not a table: %s", type(mod))
+      elseif type(mod.setup) ~= "function" then
+        _debug_msg("[packard] auto-config: module.setup is not a function: %s", type(mod.setup))
+      end
     end
   end
 end
@@ -181,6 +195,7 @@ function M.setup_lazy_load(plugins, load_fn)
             local count = type(resolved) == "table" and #resolved or 1
             _debug_msg("[packard] keys fn OK for '%s': %d entry(ies)", plugin.name, count)
           else
+            _debug_msg("[packard] keys fn ERROR for '%s': %s", plugin.name, tostring(result))
             resolved = nil
             vim.notify(
               string.format("[packard] keys function ERROR for '%s': %s", plugin.name, result),
