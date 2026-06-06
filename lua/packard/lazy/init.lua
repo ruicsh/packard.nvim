@@ -328,10 +328,13 @@ function M.setup_lazy_load(plugins, load_fn)
                   _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
                   table.insert(_plugin_stubs[plugin.name].cleanups, function()
                     if capture_rhs then
-                      -- vim.keymap.set replaces an active expr mapping immediately.
-                      -- Do NOT vim.keymap.del first — inside an expr callback, del is
-                      -- deferred by Neovim and would remove the real mapping after
-                      -- our callback returns, creating an infinite loop.
+                      -- Delete the stub, then set the real mapping — matching
+                      -- lazy.nvim's Handler:_del + Handler:_set pattern exactly.
+                      -- The del may be deferred inside the expr callback, but
+                      -- nvim_feedkeys processes the replayed LHS through the
+                      -- new mapping (set by the immediate set) before the
+                      -- deferred del fires.
+                      pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
                       vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
                     else
                       -- No RHS to restore; delete the stub immediately.
@@ -348,61 +351,33 @@ function M.setup_lazy_load(plugins, load_fn)
                       tostring(capture_rhs)
                     )
 
-                    -- Step 1: Capture the mode before any plugin loading/mapping changes,
-                    -- used by the mode guard to verify we're still in the same mode
-                    -- after the scheduled replay fires.
-                    local mode_at_fire = vim.api.nvim_get_mode().mode
-
-                    -- Step 2: Cleanup all stubs for this plugin (including this one).
+                    -- Step 1: Cleanup all stubs for this plugin (including this one).
                     -- Matches lazy.nvim's Handler:_del(keys) + Handler.disable(plugin)
                     disable_triggers(plugin.name)
 
-                    -- Step 3: Load the plugin
+                    -- Step 2: Load the plugin
                     load_fn(plugin)
                     _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
 
-                    -- Step 4: Build the feed string (LHS with <Ignore> prefix, matching
+                    -- Step 3: Build the feed string (LHS with <Ignore> prefix, matching
                     -- lazy.nvim's approach).  <Ignore> is discarded by Neovim; it prevents
                     -- the replayed key from partially matching pending key sequences that
                     -- could re-trigger a stub.
+                    -- "i" mode inserts at the front of the typeahead buffer.
+                    -- The nvim_feedkeys call is inside the expr callback — matching
+                    -- lazy.nvim's proven behavior.
+                    -- After disable_triggers, the real mapping lhs→rhs is already active,
+                    -- so replaying lhs naturally resolves through the full mapping chain:
+                    --   lhs → rhs → plugin_action
+                    -- This avoids feeding <Plug> sequences directly (which don't resolve
+                    -- correctly via nvim_feedkeys) and works for all RHS types: <Plug>,
+                    -- <cmd>, functions, and plain strings.
                     local lhs = capture_lhs
                     if capture_mode:sub(-1) == "a" then
                       lhs = lhs .. "<C-]>"
                     end
                     local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. lhs, true, true, true)
-
-                    -- Step 5: Defer replay via vim.schedule + mode guard.
-                    --
-                    -- vim.keymap.set inside an expr callback does NOT reliably replace
-                    -- a global mapping for the current key processing sequence.  Calling
-                    -- nvim_feedkeys synchronously would process the replayed key with a
-                    -- stale mapping table — the expr stub would fire again → infinite loop.
-                    --
-                    -- vim.schedule defers the replay to the next event-loop iteration,
-                    -- after the mapping changes from disable_triggers have fully propagated.
-                    -- The mode guard ensures we do not replay the key in a different mode
-                    -- (e.g. user typed <Esc> before the scheduled callback fires).
-                    vim.schedule(function()
-                      local current_mode = vim.api.nvim_get_mode().mode
-                      -- For insert mode, accept any insert submode (ic, ix, etc.).
-                      -- For other modes, require an exact match.
-                      local compatible = (capture_mode == "i" and current_mode:sub(1, 1) == "i")
-                        or capture_mode == current_mode
-                      if compatible then
-                        -- "i" mode inserts at the front of the typeahead buffer so the
-                        -- replayed key is processed before any other buffered input.
-                        vim.api.nvim_feedkeys(feed, "i", false)
-                      else
-                        _debug_msg(
-                          "[packard] mode changed (%s→%s) — skipping LHS replay for '%s'",
-                          mode_at_fire,
-                          current_mode,
-                          plugin.name
-                        )
-                      end
-                    end)
-
-                    -- Return nil so the expr mapping itself feeds nothing.
+                    vim.api.nvim_feedkeys(feed, "i", false)
                     return
                   end, {
                     expr = true,
