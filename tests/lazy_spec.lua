@@ -2022,9 +2022,9 @@ Helpers.describe("Lazy Loading", function()
     -- Fire the stub by entering insert mode then pressing the trigger key.
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<c-b>", true, false, true), "x", false)
 
-    -- Plugin was already loaded during keys fn resolution (require detection),
-    -- but the stub still fires and increments load_count once more (no-op).
-    Helpers.expect(load_count).to_be(2)
+    -- Plugin was NOT loaded during keys fn resolution (eager-loading removed).
+    -- It is loaded once when the stub fires.
+    Helpers.expect(load_count).to_be(1)
     Helpers.expect(package.loaded["readlike"]).to_be_truthy()
 
     -- Verify: stub was replaced by the real mapping (string RHS, no callback)
@@ -2041,7 +2041,7 @@ Helpers.describe("Lazy Loading", function()
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<c-b>", true, false, true), "x", false)
 
     -- load_and_config must NOT have been called again
-    Helpers.expect(load_count).to_be(2)
+    Helpers.expect(load_count).to_be(1)
 
     -- Verify: functional behavior — the first press (which triggered the stub)
     -- should have actually moved the cursor left in insert mode.
