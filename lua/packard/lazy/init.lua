@@ -363,27 +363,29 @@ function M.setup_lazy_load(plugins, load_fn)
                     -- ensures the real mapping is active before the replayed key
                     -- is processed, preventing infinite re-invocation.
                     vim.schedule(function()
-                      if type(capture_rhs) == "function" then
-                        local res = capture_rhs()
-                        if type(res) == "string" and res ~= "" then
-                          local keys = vim.api.nvim_replace_termcodes(res, true, false, true)
-                          vim.api.nvim_feedkeys(keys, "m", false)
-                        end
-                      elseif type(capture_rhs) == "string" then
-                        local keys = vim.api.nvim_replace_termcodes(capture_rhs, true, false, true)
-                        vim.api.nvim_feedkeys(keys, "m", false)
-                      else
-                        -- Trigger-only keys: replay LHS to hit the real mapping
-                        local keys = vim.api.nvim_replace_termcodes(capture_lhs, true, false, true)
-                        vim.api.nvim_feedkeys(keys, "m", false)
+                      -- Replay LHS with <Ignore> prefix, matching lazy.nvim's approach.
+                      -- <Ignore> is discarded by Neovim; it prevents the replayed key from
+                      -- partially matching pending key sequences that could re-trigger a stub.
+                      -- "i" mode inserts at the front of the typeahead buffer, ensuring the
+                      -- replayed key is processed before any other buffered input.
+                      -- After disable_triggers, the real mapping lhs→rhs is already active,
+                      -- so replaying lhs naturally resolves through the full mapping chain:
+                      --   lhs → rhs → plugin_action
+                      -- This avoids feeding <Plug> sequences directly (which don't resolve
+                      -- correctly via nvim_feedkeys) and works for all RHS types: <Plug>,
+                      -- <cmd>, functions, and plain strings.
+                      local lhs = capture_lhs
+                      if capture_mode:sub(-1) == "a" then
+                        lhs = lhs .. "<C-]>"
                       end
+                      local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. lhs, true, true, true)
+                      vim.api.nvim_feedkeys(feed, "i", false)
                     end)
                     return
                   end, {
                     expr = true,
                     desc = stub_desc,
                     nowait = capture_opts.nowait,
-                    replace_keycodes = capture_opts.replace_keycodes,
                     buffer = nil, -- match lazy.nvim exactly
                   })
                 end
