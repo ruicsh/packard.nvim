@@ -2685,9 +2685,9 @@ Helpers.describe("Lazy Loading", function()
     -- Plugin should have been loaded
     Helpers.expect(load_count).to_be(1)
 
-    -- Verify: stub was deleted
+    -- Verify: stub was replaced with <Nop> (to avoid deferred deletion risk)
     local post_map = vim.fn.maparg("<leader>to", "n", false, true)
-    Helpers.expect(post_map.lhs).to_be_nil()
+    Helpers.expect(post_map.rhs).to_be("<Nop>")
 
     -- Cleanup
     packard._load_and_config = orig_load

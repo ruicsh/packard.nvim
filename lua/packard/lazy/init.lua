@@ -328,17 +328,17 @@ function M.setup_lazy_load(plugins, load_fn)
                   _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
                   table.insert(_plugin_stubs[plugin.name].cleanups, function()
                     if capture_rhs then
-                      -- Delete the stub, then set the real mapping — matching
-                      -- lazy.nvim's Handler:_del + Handler:_set pattern exactly.
-                      -- The del may be deferred inside the expr callback, but
-                      -- nvim_feedkeys processes the replayed LHS through the
-                      -- new mapping (set by the immediate set) before the
-                      -- deferred del fires.
-                      pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
+                      -- Replace the stub with the real mapping immediately.
+                      -- Do NOT vim.keymap.del first — inside an expr mapping callback,
+                      -- del is deferred by Neovim and would remove the real mapping
+                      -- AFTER our callback returns, effectively disabling the key.
+                      -- vim.keymap.set is immediate and replaces the stub in-place.
                       vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
                     else
-                      -- No RHS to restore; delete the stub immediately.
-                      pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
+                      -- No RHS to restore (plugin is expected to set its own).
+                      -- Set to <Nop> to replace the stub immediately (prevents
+                      -- re-fire) without the deferred deletion risk of vim.keymap.del.
+                      vim.keymap.set(capture_mode, capture_lhs, "<Nop>", { desc = stub_desc })
                     end
                   end)
 
