@@ -356,31 +356,26 @@ function M.setup_lazy_load(plugins, load_fn)
                     load_fn(plugin)
                     _debug_msg("[packard] load_fn completed for '%s'", plugin.name)
 
-                    -- Step 3: Defer RHS invocation to escape textlock and ensure
-                    -- the mapping change (disable_triggers) has taken effect.
-                    -- vim.keymap.set inside an expr callback may not replace a
-                    -- global mapping until after the callback returns; vim.schedule
-                    -- ensures the real mapping is active before the replayed key
-                    -- is processed, preventing infinite re-invocation.
-                    vim.schedule(function()
-                      -- Replay LHS with <Ignore> prefix, matching lazy.nvim's approach.
-                      -- <Ignore> is discarded by Neovim; it prevents the replayed key from
-                      -- partially matching pending key sequences that could re-trigger a stub.
-                      -- "i" mode inserts at the front of the typeahead buffer, ensuring the
-                      -- replayed key is processed before any other buffered input.
-                      -- After disable_triggers, the real mapping lhs→rhs is already active,
-                      -- so replaying lhs naturally resolves through the full mapping chain:
-                      --   lhs → rhs → plugin_action
-                      -- This avoids feeding <Plug> sequences directly (which don't resolve
-                      -- correctly via nvim_feedkeys) and works for all RHS types: <Plug>,
-                      -- <cmd>, functions, and plain strings.
-                      local lhs = capture_lhs
-                      if capture_mode:sub(-1) == "a" then
-                        lhs = lhs .. "<C-]>"
-                      end
-                      local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. lhs, true, true, true)
-                      vim.api.nvim_feedkeys(feed, "i", false)
-                    end)
+                    -- Replay LHS with <Ignore> prefix, matching lazy.nvim's approach.
+                    -- <Ignore> is discarded by Neovim; it prevents the replayed key from
+                    -- partially matching pending key sequences that could re-trigger a stub.
+                    -- "i" mode inserts at the front of the typeahead buffer.
+                    -- nvim_feedkeys is called directly inside the expr callback (no
+                    -- vim.schedule) to ensure the replayed key is processed before any
+                    -- additional user input can change mode — matching lazy.nvim's proven
+                    -- behavior.
+                    -- After disable_triggers, the real mapping lhs→rhs is already active,
+                    -- so replaying lhs naturally resolves through the full mapping chain:
+                    --   lhs → rhs → plugin_action
+                    -- This avoids feeding <Plug> sequences directly (which don't resolve
+                    -- correctly via nvim_feedkeys) and works for all RHS types: <Plug>,
+                    -- <cmd>, functions, and plain strings.
+                    local lhs = capture_lhs
+                    if capture_mode:sub(-1) == "a" then
+                      lhs = lhs .. "<C-]>"
+                    end
+                    local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. lhs, true, true, true)
+                    vim.api.nvim_feedkeys(feed, "i", false)
                     return
                   end, {
                     expr = true,
