@@ -327,18 +327,15 @@ function M.setup_lazy_load(plugins, load_fn)
                   -- Track stub for centralized cleanup
                   _plugin_stubs[plugin.name] = _plugin_stubs[plugin.name] or { cleanups = {} }
                   table.insert(_plugin_stubs[plugin.name].cleanups, function()
+                    -- Delete the stub, then set the real mapping — matching
+                    -- lazy.nvim's Handler:_del + Handler:_set pattern exactly.
+                    -- The del may be deferred inside the expr callback, but
+                    -- nvim_feedkeys processes the replayed LHS through the
+                    -- new mapping (set by the immediate set) before the
+                    -- deferred del fires.
+                    pcall(vim.keymap.del, capture_mode, capture_lhs, { buffer = nil })
                     if capture_rhs then
-                      -- Replace the stub with the real mapping immediately.
-                      -- Do NOT vim.keymap.del first — inside an expr mapping callback,
-                      -- del is deferred by Neovim and would remove the real mapping
-                      -- AFTER our callback returns, effectively disabling the key.
-                      -- vim.keymap.set is immediate and replaces the stub in-place.
                       vim.keymap.set(capture_mode, capture_lhs, capture_rhs, capture_opts)
-                    else
-                      -- No RHS to restore (plugin is expected to set its own).
-                      -- Set to <Nop> to replace the stub immediately (prevents
-                      -- re-fire) without the deferred deletion risk of vim.keymap.del.
-                      vim.keymap.set(capture_mode, capture_lhs, "<Nop>", { desc = stub_desc })
                     end
                   end)
 
@@ -365,20 +362,20 @@ function M.setup_lazy_load(plugins, load_fn)
                     -- could re-trigger a stub.
                     -- "i" mode inserts at the front of the typeahead buffer.
                     --
-                    -- Defer replay via vim.schedule to ensure mapping changes (del + set)
-                    -- have propagated before the replayed LHS is processed.  Inside an
-                    -- expr mapping callback, vim.keymap.del/set modify the mapping table
-                    -- but these changes are not visible to the typeahead buffer within
-                    -- the same key resolution cycle.  Without vim.schedule, the stale
-                    -- stub mapping would match the replayed LHS, causing an infinite loop.
+                    -- The nvim_feedkeys call is inside the expr callback — matching
+                    -- lazy.nvim's proven behavior.
+                    -- After disable_triggers, the real mapping lhs→rhs is already active,
+                    -- so replaying lhs naturally resolves through the full mapping chain:
+                    --   lhs → rhs → plugin_action
+                    -- This avoids feeding <Plug> sequences directly (which don't resolve
+                    -- correctly via nvim_feedkeys) and works for all RHS types: <Plug>,
+                    -- <cmd>, functions, and plain strings.
                     local lhs = capture_lhs
                     if capture_mode:sub(-1) == "a" then
                       lhs = lhs .. "<C-]>"
                     end
                     local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. lhs, true, true, true)
-                    vim.schedule(function()
-                      vim.api.nvim_feedkeys(feed, "i", false)
-                    end)
+                    vim.api.nvim_feedkeys(feed, "i", false)
                     return
                   end, {
                     expr = true,

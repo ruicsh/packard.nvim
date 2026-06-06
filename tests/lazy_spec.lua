@@ -2179,19 +2179,15 @@ Helpers.describe("Lazy Loading", function()
     })
 
     -- Fire the stub by pressing the trigger key.
-    -- The "x" flag processes keys immediately.  The stub disables triggers,
-    -- loads the plugin, and schedules the LHS replay via vim.schedule (to avoid
-    -- stale-mapping infinite loop).
+    -- The "x" flag processes keys immediately. The stub disables triggers,
+    -- loads the plugin, and replays the LHS via nvim_feedkeys inside the
+    -- expr callback (no vim.schedule).
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<leader>fr", true, false, true), "x", false)
-    -- Let the scheduled callback run and add replayed keys to typeahead.
-    vim.wait(100)
-    -- Flush the typeahead so the replayed key actually fires the real mapping.
-    vim.api.nvim_feedkeys("", "x", false)
 
     -- Verify: the plugin was loaded (synchronously by the stub callback)
     Helpers.expect(package.loaded["replaymod"]).to_be_truthy()
 
-    -- Verify: the side effect WAS called (real mapping fired after scheduled replay)
+    -- Verify: the side effect WAS called (real mapping fired after replay)
     Helpers.expect(_G._replay_side_effect).to_be(true)
 
     -- Verify the real mapping is now set (non-expr, set synchronously by disable_triggers)
@@ -2254,7 +2250,8 @@ Helpers.describe("Lazy Loading", function()
 
     -- Enter insert mode then press trigger key.
     -- The "x" flag processes keys immediately.  The stub disables triggers,
-    -- loads the plugin, and schedules the LHS replay via vim.schedule.
+    -- loads the plugin, and replays the LHS via nvim_feedkeys inside the
+    -- expr callback.
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("i<a-b>", true, false, true), "x", false)
 
     Helpers.expect(package.loaded["insertmod"]).to_be_truthy()
@@ -2265,10 +2262,11 @@ Helpers.describe("Lazy Loading", function()
     Helpers.expect(real_map.expr).to_be(0)
 
     -- Invoke the real mapping directly to verify the side effect.
-    -- In headless mode, replaying keys via nvim_feedkeys from a scheduled
-    -- callback doesn't reliably trigger insert-mode mappings even with flush
-    -- tricks.  Since we've verified the mapping exists and is correctly
-    -- formed, direct invocation is acceptable for side-effect validation.
+    -- In headless mode, replaying keys via nvim_feedkeys inside an expr
+    -- callback doesn't reliably trigger insert-mode mappings even with the
+    -- "x" flag (which is meant for normal mode). Since we've verified the
+    -- mapping exists and is correctly formed, direct invocation is
+    -- acceptable for side-effect validation.
     real_map.callback()
     Helpers.expect(_G._insert_side_effect).to_be(true)
 
@@ -2328,7 +2326,8 @@ Helpers.describe("Lazy Loading", function()
 
     -- Enter command mode then press trigger key.
     -- The "x" flag processes keys immediately.  The stub disables triggers,
-    -- loads the plugin, and schedules the LHS replay via vim.schedule.
+    -- loads the plugin, and replays the LHS via nvim_feedkeys inside the
+    -- expr callback.
     vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(":<a-c>", true, false, true), "x", false)
 
     Helpers.expect(package.loaded["cmdmod"]).to_be_truthy()
@@ -2685,9 +2684,9 @@ Helpers.describe("Lazy Loading", function()
     -- Plugin should have been loaded
     Helpers.expect(load_count).to_be(1)
 
-    -- Verify: stub was replaced with <Nop> (to avoid deferred deletion risk)
+    -- Verify: stub was deleted (matching lazy.nvim's _del when no RHS)
     local post_map = vim.fn.maparg("<leader>to", "n", false, true)
-    Helpers.expect(post_map.rhs).to_be("<Nop>")
+    Helpers.expect(next(post_map)).to_be_nil()
 
     -- Cleanup
     packard._load_and_config = orig_load
