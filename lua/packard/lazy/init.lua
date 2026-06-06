@@ -364,20 +364,21 @@ function M.setup_lazy_load(plugins, load_fn)
                     -- the replayed key from partially matching pending key sequences that
                     -- could re-trigger a stub.
                     -- "i" mode inserts at the front of the typeahead buffer.
-                    -- The nvim_feedkeys call is inside the expr callback — matching
-                    -- lazy.nvim's proven behavior.
-                    -- After disable_triggers, the real mapping lhs→rhs is already active,
-                    -- so replaying lhs naturally resolves through the full mapping chain:
-                    --   lhs → rhs → plugin_action
-                    -- This avoids feeding <Plug> sequences directly (which don't resolve
-                    -- correctly via nvim_feedkeys) and works for all RHS types: <Plug>,
-                    -- <cmd>, functions, and plain strings.
+                    --
+                    -- Defer replay via vim.schedule to ensure mapping changes (del + set)
+                    -- have propagated before the replayed LHS is processed.  Inside an
+                    -- expr mapping callback, vim.keymap.del/set modify the mapping table
+                    -- but these changes are not visible to the typeahead buffer within
+                    -- the same key resolution cycle.  Without vim.schedule, the stale
+                    -- stub mapping would match the replayed LHS, causing an infinite loop.
                     local lhs = capture_lhs
                     if capture_mode:sub(-1) == "a" then
                       lhs = lhs .. "<C-]>"
                     end
                     local feed = vim.api.nvim_replace_termcodes("<Ignore>" .. lhs, true, true, true)
-                    vim.api.nvim_feedkeys(feed, "i", false)
+                    vim.schedule(function()
+                      vim.api.nvim_feedkeys(feed, "i", false)
+                    end)
                     return
                   end, {
                     expr = true,
