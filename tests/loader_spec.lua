@@ -217,6 +217,46 @@ Helpers.describe("Loader eager loading", function()
     Helpers.expect(load_order[2]).to_be("main")
   end)
 
+  Helpers.describe("_derive_modname", function()
+    Helpers.it("returns plugin.main when set", function()
+      local plugin = { main = "custom.module", name = "nvim-cmp" }
+      Helpers.expect(Loader._derive_modname(plugin)).to_be("custom.module")
+    end)
+
+    Helpers.it("strips .nvim suffix", function()
+      local plugin = { name = "plenary.nvim" }
+      Helpers.expect(Loader._derive_modname(plugin)).to_be("plenary")
+    end)
+
+    Helpers.it("strips .vim suffix", function()
+      local plugin = { name = "fugitive.vim" }
+      Helpers.expect(Loader._derive_modname(plugin)).to_be("fugitive")
+    end)
+
+    Helpers.it("strips nvim- prefix", function()
+      local plugin = { name = "nvim-cmp" }
+      Helpers.expect(Loader._derive_modname(plugin)).to_be("cmp")
+    end)
+
+    Helpers.it("strips vim- prefix", function()
+      local plugin = { name = "vim-fugitive" }
+      Helpers.expect(Loader._derive_modname(plugin)).to_be("fugitive")
+    end)
+
+    Helpers.it("strips both nvim- prefix and .nvim suffix", function()
+      local plugin = { name = "nvim-plenary.nvim" }
+      Helpers.expect(Loader._derive_modname(plugin)).to_be("plenary")
+    end)
+
+    Helpers.it("returns name unchanged when no matching prefix/suffix", function()
+      local plugin = { name = "blink.cmp" }
+      Helpers.expect(Loader._derive_modname(plugin)).to_be("blink.cmp")
+      -- mini.nvim is also unchanged
+      local plugin2 = { name = "mini.nvim" }
+      Helpers.expect(Loader._derive_modname(plugin2)).to_be("mini")
+    end)
+  end)
+
   -- Restore
   packard._bootstrap = original_bootstrap
   vim.cmd.packadd = original_packadd

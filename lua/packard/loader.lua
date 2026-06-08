@@ -3,6 +3,17 @@ local Utils = require("packard.utils")
 local Loader = {}
 
 Loader._debug = false
+
+---Derive the Lua module name for auto-setup from a plugin name.
+---Matches lazy.nvim's convention: strips .nvim/.vim suffix and nvim-/vim- prefix.
+---@param plugin table NormalizedPlugin
+---@return string|nil
+function Loader._derive_modname(plugin)
+  if plugin.main then
+    return plugin.main
+  end
+  return plugin.name:gsub("%.n?vim$", ""):gsub("^n?vim%-", "")
+end
 local function _debug_msg(fmt, ...)
   if not Loader._debug and not vim.g.packard_debug then
     return
@@ -229,7 +240,7 @@ function Loader.load_and_config(plugin, plugins)
     _debug_msg("[packard] calling explicit config for '%s'", plugin.name)
     plugin.config(plugin, opts or {})
   elseif plugin.config == true or (plugin.config == nil and opts ~= nil) then
-    local modname = plugin.main or plugin.name:gsub("%.nvim$", "")
+    local modname = Loader._derive_modname(plugin)
     _debug_msg("[packard] auto-config: requiring '%s' for '%s'", modname, plugin.name)
     local ok, mod = pcall(require, modname)
     if not ok and not plugin.main and modname ~= plugin.name then
