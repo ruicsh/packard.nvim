@@ -205,6 +205,9 @@ function M.setup(opts, ctx)
 
   ctx._bootstrap()
   ctx._setup_eager_load()
+  -- ADR-011: colorscheme autoload — must run after eager load so any
+  -- already-loaded colorscheme plugins are known to getcompletion.
+  require("packard.colorscheme").register(ctx.plugins)
   ctx._register_commands()
 
   -- T-7.1: Startup notification

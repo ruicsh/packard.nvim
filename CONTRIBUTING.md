@@ -8,13 +8,23 @@ Thank you for your interest in contributing to `packard.nvim`! This document pro
 
 ### Key Components
 
-- **`lua/packard/parser.lua`**: Parses and normalizes plugin specs (following `lazy.nvim` conventions).
-- **`lua/packard/lazy/init.lua`**: Lazy-loading triggers (keymaps, commands, events, filetypes) plus the implicit `ColorSchemePre` autocmd that loads colorscheme plugins on `:colorscheme <name>`. Also pre-populates `package.path` with each plugin's `lua/` directory at setup time, so spec functions can `require()` the plugin's main module.
-- **`lua/packard/fetch.lua`**: Handles parallel `git fetch` operations to check for updates.
-- **`lua/packard/cooldown.lua`**: Logic for managing discovery timestamps and eligibility.
-- **`lua/packard/state.lua`**: Persistence layer for the machine-local queue, blacklist, and history.
-- **`lua/packard/ui/`** (7 files): The dashboard UI, split into focused sub-modules — `init.lua` (state + lifecycle), `renderers.lua` (tab content), `handlers.lua` (user actions), `highlights.lua` (extmarks), `expansions.lua` (inline AI + log expansions), `keymaps.lua` (keybindings), and `utils.lua` (formatters). Built on Neovim's floating window and buffer APIs. Tabs: Installed, Update, Pending, Summary, Clean, Help.
-- **`lua/packard/lockfile.lua`**: Interface for Neovim's built-in `nvim-pack-lock.json`.
+- **`lua/packard/core/setup.lua`**: Entry point — validates opts, merges `specs_dir` + inline specs, filters `enabled`/`cond`, dedup & merge, self-management injection, calls parser → bootstrap → eager load → commands.
+- **`lua/packard/core/bootstrap.lua`**: Registers `PackChanged` autocmd, calls `vim.pack.add()` (batch), runs builds on fresh installs, auto-resolves undeclared deps via `deps.lua`, initializes state file.
+- **`lua/packard/core/check.lua`**: `:Packard check` orchestration — concurrent-safety flag, calls fetch engine, processes results into cooldown queue, prints summary.
+- **`lua/packard/core/commands.lua`**: Registers `:Packard` user command with subcommands (`check`, `review`, `summary`, `clean`, `build`, `help`). Tab completion for subcommands and plugin names.
+- **`lua/packard/parser/`** (3 files): Spec parsing, normalization, validation, topological sort (Kahn's algorithm), circular dependency detection, dependency normalization.
+- **`lua/packard/loader.lua`**: Two responsibilities — (1) directory-based spec loading via `loadfile()` with per-level parent-first recursive walk, and (2) eager loading engine: pre-populate `package.path`, run `init()`, `packadd`/rtp-prepend, `config()`/auto-setup, register `keys` (first-wins), register `cmd`.
+- **`lua/packard/colorscheme.lua`**: Loads colorscheme plugins on demand via `ColorSchemePre` autocmd — detects `colors/<name>.{lua,vim}` in plugin paths and loads the matching plugin when the user runs `:colorscheme <name>`.
+- **`lua/packard/fetch/`** (2 files): Parallel `git fetch` via `vim.system()` batch-spawn-collect. Network probe, default branch resolution, force-push detection, version-tracked tag resolution.
+- **`lua/packard/cooldown.lua`**: Manages discovery timestamps and eligibility. `register_commit()` with blacklist check and superseding. `check_eligibility()` via ISO 8601 timestamp parsing.
+- **`lua/packard/state/`** (3 files): Machine-local state persistence (`packard-state.json`). Queue, blacklist, update log CRUD. AI cache (`packard-ai-cache.json`). Atomic writes (`.tmp` → `os.rename`), corrupt file recovery.
+- **`lua/packard/ui/`** (7 files): Dashboard UI, split into focused sub-modules — `init.lua` (state + lifecycle), `renderers.lua` (tab content), `handlers.lua` (user actions), `highlights.lua` (extmarks), `expansions.lua` (inline AI + log expansions), `keymaps.lua` (keybindings), and `utils.lua` (formatters). Built on Neovim's floating window and buffer APIs. Tabs: Installed, Update, Pending, Summary, Clean, Help.
+- **`lua/packard/lockfile.lua`**: Read-only interface for Neovim's built-in `nvim-pack-lock.json`. Cached reads with `invalidate()`. Supports Neovim 0.12 format (`data.plugins[name].rev`) and legacy format (`data[name].ref`).
+- **`lua/packard/build.lua`**: Execute post-install/update build steps — Lua function, `:Command`, `*.lua` file, shell command, or list. Auto-detects `build.lua`/`build/init.lua`.
+- **`lua/packard/ai.lua`**: AI review engine — cache check → `git diff` → threshold checks → `curl` HTTP request → response parsing → cache write. Supports OpenAI, Anthropic, Ollama, custom providers.
+- **`lua/packard/url.lua`**: Forge compare URL construction for GitHub, GitLab, Bitbucket. Pure string formatting — no API calls.
+- **`lua/packard/orphans.lua`**: Find orphaned directories (in `opt/` not in spec) and stale state metadata (queue/blacklist entries not in spec). Self-protection: skips `packard.nvim`.
+- **`lua/packard/health.lua`**: `:checkhealth packard` reports — config, lockfile, pending queue, AI config, network, plugin directories, dependency status.
 
 For a detailed design blueprint, see `SPEC.md`.
 

@@ -20,10 +20,8 @@ local Parser = {}
 ---@field main string|nil
 ---@field init function|nil
 ---@field opts table|nil
----@field event string|string[]|table|nil
 ---@field cmd string|string[]|table|nil
 ---@field keys string|string[]|table|function|nil
----@field ft string|string[]|table|nil
 ---@field ai_review table|nil Per-plugin AI config override
 ---@field cond boolean|function|nil Conditional loading (evaluated once at setup)
 ---@field build function|string|string[]|false|nil Post-install/update build step
@@ -197,10 +195,8 @@ function Parser.parse_all(plugins, defaults)
       main = spec.main,
       init = spec.init,
       opts = spec.opts,
-      event = spec.event,
       cmd = spec.cmd,
       keys = spec.keys,
-      ft = spec.ft,
       build = spec.build,
       ai_review = spec.ai_review,
       cond = spec.cond,

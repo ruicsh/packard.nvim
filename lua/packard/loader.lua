@@ -242,6 +242,95 @@ function Loader.load_and_config(plugin, plugins)
   end
 end
 
+---Register keymaps and commands for a plugin.
+---This is extracted from setup_eager_load so it can be reused when
+---lazy-loading a plugin (e.g., via the ColorSchemePre autocmd).
+---@param plugin table NormalizedPlugin
+function Loader.register_triggers(plugin)
+  -- 1. Keys
+  if plugin.keys then
+    local resolved = plugin.keys
+    if type(resolved) == "function" then
+      local ok, result = pcall(resolved)
+      if ok then
+        resolved = result
+      else
+        vim.notify(string.format("packard: keys function error for '%s': %s", plugin.name, result), vim.log.levels.WARN)
+        resolved = nil
+      end
+    end
+
+    if resolved then
+      local keys = type(resolved) == "table" and resolved or { resolved }
+      for _, key in ipairs(keys) do
+        local lhs, rhs, mode
+        if type(key) == "string" then
+          lhs = key
+          mode = "n"
+        elseif type(key) == "table" then
+          local first = key[1]
+          if type(first) == "string" and first:match("^[nivxsotc]+$") and type(key[2]) == "string" then
+            mode = first
+            lhs = key[2]
+            rhs = key[3]
+          else
+            mode = key.mode or "n"
+            lhs = key[1]
+            rhs = key[2]
+          end
+        end
+
+        if lhs and rhs then
+          local map_opts = {}
+          if type(key) == "table" then
+            for k, v in pairs(key) do
+              if type(k) ~= "number" and k ~= "mode" then
+                map_opts[k] = v
+              end
+            end
+          end
+          local modes ---@type string[]
+          if type(mode) == "string" then
+            modes = vim.split(mode, ",")
+          elseif type(mode) == "table" then
+            modes = mode
+          else
+            modes = { "n" }
+          end
+          for _, m in ipairs(modes) do
+            -- Silently skip if keymap already exists
+            local expanded = vim.api.nvim_replace_termcodes(lhs, true, true, true)
+            local existing = vim.fn.maparg(expanded, m)
+            if existing == "" then
+              _debug_msg("[packard] mapping %s (%s) for %s", lhs, m, plugin.name)
+              pcall(vim.keymap.set, m, lhs, rhs, map_opts)
+            else
+              _debug_msg("[packard] skipping %s (%s) for %s: already mapped", lhs, m, plugin.name)
+            end
+          end
+        else
+          if lhs then
+            _debug_msg("[packard] skipping %s for %s: rhs is nil", lhs, plugin.name)
+          end
+        end
+      end
+    end
+  end
+
+  -- 2. Commands
+  if plugin.cmd then
+    local cmds = type(plugin.cmd) == "table" and plugin.cmd or { plugin.cmd }
+    for _, cmd in ipairs(cmds) do
+      -- Silently skip if command already exists
+      pcall(vim.api.nvim_create_user_command, cmd, function(args)
+        local bang = args.bang and "!" or ""
+        local command = cmd .. bang .. (args.args and #args.args > 0 and " " .. args.args or "")
+        vim.cmd(command)
+      end, { bang = true, nargs = "*", range = true, desc = string.format("packard: %s", plugin.name) })
+    end
+  end
+end
+
 ---@private
 ---Set up eager loading for all plugins.
 ---@param plugins table All plugins
@@ -268,91 +357,8 @@ function Loader.setup_eager_load(plugins, load_fn)
       -- 2. Load and config
       load_fn(plugin)
 
-      -- 3. Keys
-      if plugin.keys then
-        local resolved = plugin.keys
-        if type(resolved) == "function" then
-          local ok, result = pcall(resolved)
-          if ok then
-            resolved = result
-          else
-            vim.notify(
-              string.format("packard: keys function error for '%s': %s", plugin.name, result),
-              vim.log.levels.WARN
-            )
-            resolved = nil
-          end
-        end
-
-        if resolved then
-          local keys = type(resolved) == "table" and resolved or { resolved }
-          for _, key in ipairs(keys) do
-            local lhs, rhs, mode
-            if type(key) == "string" then
-              lhs = key
-              mode = "n"
-            elseif type(key) == "table" then
-              local first = key[1]
-              if type(first) == "string" and first:match("^[nivxsotc]+$") and type(key[2]) == "string" then
-                mode = first
-                lhs = key[2]
-                rhs = key[3]
-              else
-                mode = key.mode or "n"
-                lhs = key[1]
-                rhs = key[2]
-              end
-            end
-
-            if lhs and rhs then
-              local map_opts = {}
-              if type(key) == "table" then
-                for k, v in pairs(key) do
-                  if type(k) ~= "number" and k ~= "mode" then
-                    map_opts[k] = v
-                  end
-                end
-              end
-              local modes ---@type string[]
-              if type(mode) == "string" then
-                modes = vim.split(mode, ",")
-              elseif type(mode) == "table" then
-                modes = mode
-              else
-                modes = { "n" }
-              end
-              for _, m in ipairs(modes) do
-                -- Silently skip if keymap already exists
-                local expanded = vim.api.nvim_replace_termcodes(lhs, true, true, true)
-                local existing = vim.fn.maparg(expanded, m)
-                if existing == "" then
-                  _debug_msg("[packard] mapping %s (%s) for %s", lhs, m, plugin.name)
-                  pcall(vim.keymap.set, m, lhs, rhs, map_opts)
-                else
-                  _debug_msg("[packard] skipping %s (%s) for %s: already mapped", lhs, m, plugin.name)
-                end
-              end
-            else
-              if lhs then
-                _debug_msg("[packard] skipping %s for %s: rhs is nil", lhs, plugin.name)
-              end
-            end
-          end
-        end
-      end
-
-      -- 4. Commands
-      if plugin.cmd then
-        local cmds = type(plugin.cmd) == "table" and plugin.cmd or { plugin.cmd }
-        for _, cmd in ipairs(cmds) do
-          -- Silently skip if command already exists
-          pcall(vim.api.nvim_create_user_command, cmd, function(args)
-            local bang = args.bang and "!" or ""
-            local command = cmd .. bang .. (args.args and #args.args > 0 and " " .. args.args or "")
-            vim.cmd(command)
-          end, { bang = true, nargs = "*", range = true, desc = string.format("packard: %s", plugin.name) })
-        end
-      end
+      -- 3. Keys + Commands
+      Loader.register_triggers(plugin)
     end
   end
 end

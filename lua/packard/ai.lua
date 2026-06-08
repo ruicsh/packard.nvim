@@ -1,6 +1,14 @@
 local AI = {}
 local State = require("packard.state")
 
+-- Provider-specific default API endpoint URLs.
+-- Users can override via `ai_review.url` in their packard setup.
+AI.DEFAULT_URLS = {
+  openai = "https://api.openai.com/v1/chat/completions",
+  anthropic = "https://api.anthropic.com/v1/messages",
+  ollama = "http://localhost:11434/api/chat",
+}
+
 AI.DEFAULT_PROMPT_TEMPLATE = [[
 Review the following git diff between two commits of a Neovim plugin.
 Your primary task is to assess security risk — does this change introduce or
@@ -284,7 +292,17 @@ function AI.review(plugin, from_sha, to_sha, opts, callback)
       table.insert(curl_args, "-H")
       table.insert(curl_args, string.format("%s: %s", k, v))
     end
-    table.insert(curl_args, opts.url)
+    local url = opts.url or AI.DEFAULT_URLS[opts.provider]
+    if not url then
+      callback(
+        string.format(
+          "AI review: no URL configured for provider '%s'. Set 'ai_review.url' in packard.setup().",
+          opts.provider
+        )
+      )
+      return
+    end
+    table.insert(curl_args, url)
 
     -- 4. Execute curl
     --[[@diagnostic disable-next-line: redundant-parameter]]
