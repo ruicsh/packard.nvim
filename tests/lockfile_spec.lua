@@ -1,8 +1,9 @@
 local Lockfile = require("packard.lockfile")
 
-local lockfile_path = vim.fn.stdpath("config") .. "/nvim-pack-lock.json"
+local lockfile_path = vim.fs.joinpath(vim.fn.stdpath("config"), "nvim-pack-lock.json")
 
 local function setup_lockfile(data)
+  vim.fn.mkdir(vim.fn.fnamemodify(lockfile_path, ":h"), "p")
   local f = io.open(lockfile_path, "w")
   if f then
     f:write(vim.json.encode(data))
