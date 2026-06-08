@@ -43,6 +43,11 @@ function M.expect(actual)
         error(string.format("Expected nil but got %s", vim.inspect(actual)))
       end
     end,
+    to_not_be_nil = function()
+      if actual == nil then
+        error("Expected non-nil but got nil")
+      end
+    end,
     to_be_truthy = function()
       if not actual then
         error(string.format("Expected truthy but got %s", vim.inspect(actual)))
