@@ -9,6 +9,8 @@
 
 A security-first Neovim plugin manager that protects against supply chain attacks by enforcing a configurable cooldown period on new commits and requiring manual user review before any plugin is updated.
 
+<img src="assets/screenshot.png" />
+
 ## Features
 
 - **Commit Pinning**: Everything is pinned to a specific SHA.
@@ -101,8 +103,8 @@ Packard eagerly loads all enabled plugins at startup (or on manual `:packadd`). 
 | `init`         | `function`                          | Function called at **startup** before the plugin loads: `function(plugin)`. Useful for setting `vim.g.*` values that VimScript plugins check at startup.                                                                                       |
 | `opts`         | `table` or `function`               | Options passed to the `config` function. If `config` is absent but `opts` is present, auto-invokes `require(MAIN).setup(opts)`. Can also be a function returning a table.                                                                      |
 | `dependencies` | `string\|string[]\|table[]`         | Plugins required by this plugin. Auto-injected if not declared. Strings are parsed as specs; tables support the full spec format. Topological sort ensures deps load first.                                                                    |
-| `build`        | `function\|string\|string[]\|false` | Post-install/update build step. Supports Lua functions, `:Commands`, `*.lua` files, shell commands, and lists. Auto-detects `build.lua` / `build/init.lua`. Set to `false` to disable. |
-| `pin`          | `boolean`                           | Permanently pin the plugin to its current commit — never check for updates. `pin = true` freezes the plugin. |
+| `build`        | `function\|string\|string[]\|false` | Post-install/update build step. Supports Lua functions, `:Commands`, `*.lua` files, shell commands, and lists. Auto-detects `build.lua` / `build/init.lua`. Set to `false` to disable.                                                         |
+| `pin`          | `boolean`                           | Permanently pin the plugin to its current commit — never check for updates. `pin = true` freezes the plugin.                                                                                                                                   |
 
 Example:
 
