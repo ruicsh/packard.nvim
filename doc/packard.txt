@@ -8,7 +8,7 @@ CONTENTS                                                    *packard-contents*
   3. Setup ............................ |packard-setup|
   4. Plugin Spec ...................... |packard-spec|
      - Source Fields .................. |packard-spec-source|
-     - Lazy-Loading Fields ............ |packard-spec-lazy|
+      - Eager Registration Fields ...... |packard-spec-eager|
      - Setup Fields ................... |packard-spec-setup|
      - Version Fields ................. |packard-spec-version|
      - Build Field .................... |packard-spec-build|
@@ -34,9 +34,10 @@ enforcing a configurable cooldown period on new commits and requiring manual
 user review before any plugin is updated.
 
 Key features:
-  - Lazy loading: keymaps, commands, events, filetypes
+  - Eager loading: all plugins load immediately on startup
   - Commit pinning: everything is pinned to a specific SHA
   - Version constraints: semver range support (`version = "1.*"`)
+  - Spec merging: combine fragmented plugin specs from multiple files
   - Cooldown queue: new commits held for a configurable period (default 30d)
   - Manual review: approve or reject updates after inspecting changes
   - AI review engine: optional inline AI analysis of diffs
@@ -70,7 +71,7 @@ packard.setup({opts})                           *packard.setup()*
   │                     │         │          │ spec files                      │
   │ ai_review           │ table   │ nil      │ AI review configuration         │
   │ highlights          │ table   │ nil      │ Custom highlight group overrides│
-  │ debug               │ boolean │ false    │ Enable verbose lazy-load        │
+  │ debug               │ boolean │ false    │ Enable verbose loading          │
   │                     │         │          │ tracing to |:messages|          │
   │ notifications       │ boolean │ true     │ Show startup notification when  │
   │                     │         │          │ plugins are ready for review    │
@@ -156,33 +157,25 @@ Table form: >
   Local plugins:
   - Must already exist on disk (no clone/fetch/checkout)
   - Skip all git operations and cooldown queue
-  - Support all lazy-loading triggers
+  - Support eager registration of keymaps and commands
   - Support `build` steps (run in the local directory)
   - Support dependencies on remote (managed) plugins
 
   If both `[1]` and `dir` are provided, packard raises an error.
 
 ------------------------------------------------------------------------------
-4.2 Lazy-Loading Fields                              *packard-spec-lazy*
+4.2 Eager Registration Fields                        *packard-spec-eager*
 
   ┌─────────────────┬──────────────┬───────────────────────────────────────────┐
   │ Field           │ Type         │ Description                               │
   ├─────────────────┼──────────────┼───────────────────────────────────────────┤
-  │ keys            │ string,      │ Load on keymap(s). Supports strings,      │
-  │                 │ string[],    │ full mapping tables `{lhs, rhs, ...}`,    │
-  │                 │ table,       │ or functions returning key specs.         │
-  │                 │ function     │ Functions may `require()` the plugin      │
-  │                 │              │ module at setup time — packard            │
-  │                 │              │ pre-populates `package.path`.             │
-  │ cmd             │ string,      │ Load on |:command|(s).                    │
-  │                 │ string[]     │                                           │
-  │ event           │ string,      │ Load on autocmd event(s). Supports        │
-  │                 │ string[]     │ pseudo-events: `VeryLazy`, `LazyFile`.    │
-  │                 │              │ Pattern events: `BufEnter *.lua`.         │
-  │ ft              │ string,      │ Load on filetype(s).                      │
-  │                 │ string[]     │                                           │
-  │ lazy            │ boolean      │ If `false`, load immediately on startup   │
-  │                 │              │ (default: `true`).                        │
+  │ keys            │ string,      │ Register keymap(s) immediately at startup.│
+  │                 │ string[],    │ Supports strings, full mapping tables     │
+  │                 │ table,       │ `{lhs, rhs, ...}`, or functions returning │
+  │                 │ function     │ key specs. "First-wins" skipping for      │
+  │                 │              │ conflicts.                                │
+  │ cmd             │ string,      │ Register |:command|(s) immediately at     │
+  │                 │ string[]     │ startup. "First-wins" skipping.           │
   └─────────────────┴──────────────┴───────────────────────────────────────────┘
 
   Example: >
@@ -196,7 +189,7 @@ Table form: >
   If `keys` is a function that needs to `require()` the plugin's Lua module: >
     { "assistcontrol/readline.nvim",
       keys = function()
-        local r = require("readline") -- resolves at setup time
+        local r = require("readline") -- resolves at startup
         return {
           { "<a-b>", r.backward_word, desc = "Jump word", mode = { "i", "c" } },
         }
@@ -220,8 +213,7 @@ Table form: >
   │          │                  │ `config`/`opts` auto-setup. Useful when      │
   │          │                  │ the module name doesn't match the repo.      │
   │ init     │ function         │ Called at startup before plugin loads:       │
-  │          │                  │ `function(plugin)`. Runs for all plugins     │
-  │          │                  │ regardless of `lazy` setting.                │
+  │          │                  │ `function(plugin)`.                          │
   │ priority │ number           │ Load order (lower = earlier).                │
   └──────────┴──────────────────┴──────────────────────────────────────────────┘
 
@@ -314,9 +306,8 @@ Table form: >
     are skipped.
   - Each spec file returns a plugin spec (string or table) or an array of specs.
   - File specs are merged with the inline `plugins` array:
-    - Trigger fields (`keys`, `cmd`, `event`, `ft`) are merged from all specs.
-    - Non-trigger fields: inline `plugins` wins over file specs.
-    - Deep-merges `opts` tables for the same plugin.
+    - `keys`, `cmd`, `opts`, and `dependencies` are deep-merged.
+    - Other fields: inline `plugins` wins over file specs.
   - Error reporting is batched: all load errors and non-table return warnings
     are collected and reported together after the scan.
 
@@ -332,7 +323,6 @@ Table form: >
 
   Main colorscheme (loaded at startup): >
     { "folke/tokyonight.nvim",
-      lazy = false,
       priority = 1000,
       opts = {},
       config = function(_, opts)
@@ -343,15 +333,9 @@ Table form: >
 <
   Lazy-loaded colorscheme (loaded on `:colorscheme`): >
     { "catppuccin/nvim",
-      lazy = true,
-      event = "VeryLazy",
       opts = {},
     }
     vim.cmd.colorscheme("catppuccin") -- triggers load
-<
-  Note: `lazy = true` without any triggers (`keys`, `cmd`, `event`, `ft`)
-  has no effect — packard eagerly loads triggerless plugins regardless of
-  the `lazy` setting. Always pair `lazy = true` with at least one trigger.
 
 ==============================================================================
 7. COMMANDS                                            *packard-commands*
@@ -558,10 +542,10 @@ Table form: >
 12. DEVELOPER TOOLS                                      *packard-develop*
 
   Debug mode:~
-    Setting `debug = true` in |packard.setup()| enables verbose lazy-load
-    tracing sent to |:messages|. Includes keymap stub creation, stub
-    firing and deletion, plugin loading events, `package.path` prepending,
-    and key replay actions.
+    Setting `debug = true` in |packard.setup()| enables verbose loading
+    tracing sent to |:messages|. Includes keymap registration details,
+    plugin loading events, `package.path` prepending, and auto-setup
+    actions.
 
   _diagnose helper:~
     packard exposes `M._diagnose(name)` for interactive debugging. From
@@ -570,7 +554,7 @@ Table form: >
     :lua require("packard")._diagnose("readline")
 <
     Returns a table with the plugin's normalized fields, `package.path`
-    inclusion status, and live keymap stub detection via |mapcheck()|.
+    inclusion status, and live mapping status.
 
 ==============================================================================
 13. LICENSE                                              *packard-license*
