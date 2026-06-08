@@ -1,4 +1,4 @@
-local SELF_PROTECT_OWNER_REPO = "ruic/packard.nvim"
+local SELF_PROTECT_OWNER_REPO = "ruicsh/packard.nvim"
 local SELF_PROTECT_REPO = "packard.nvim"
 
 local Orphans = {}

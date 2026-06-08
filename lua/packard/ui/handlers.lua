@@ -306,11 +306,7 @@ return function(UI)
 
     local url = URL.build_compare_url(plugin.url, from, to)
     if url then
-      if vim.ui and vim.ui.open then
-        vim.ui.open(url)
-      else
-        vim.fn.jobstart({ "open", url })
-      end
+      vim.ui.open(url)
     else
       print("packard: could not generate compare URL for " .. plugin.url)
     end

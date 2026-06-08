@@ -237,7 +237,8 @@ function AI.review(plugin, from_sha, to_sha, opts, callback)
   end
 
   -- 2. Generate diff
-  local plugin_path = vim.fs.joinpath(vim.fn.stdpath("data"), "site", "pack", "core", "opt", plugin.name)
+  local Utils = require("packard.utils")
+  local plugin_path = Utils.get_plugin_path(plugin)
   if vim.fn.isdirectory(plugin_path) == 0 then
     callback("Plugin directory not found: " .. plugin_path)
     return
