@@ -167,7 +167,7 @@ function M.setup(opts, ctx)
 
   ctx.plugins = Parser.parse_all(final_specs, defaults)
   if #ctx.plugins == 0 then
-    print("packard: no plugins declared. Add plugins to packard.setup().")
+    vim.notify("packard: no plugins declared. Add plugins to packard.setup().", vim.log.levels.WARN)
     return ctx
   end
 

@@ -33,15 +33,18 @@ function M.register_commands(ctx)
           end
         end
         if found then
-          print(string.format("packard: building '%s'...", found.owner_repo))
+          vim.notify(string.format("packard: building '%s'...", found.owner_repo), vim.log.levels.INFO)
           local ok = Build.run(found, { force = true })
           if ok then
-            print(string.format("packard: build succeeded for '%s'", found.owner_repo))
+            vim.notify(string.format("packard: build succeeded for '%s'", found.owner_repo), vim.log.levels.INFO)
           else
-            print(string.format("packard: build failed for '%s' (see errors above)", found.owner_repo))
+            vim.notify(
+              string.format("packard: build failed for '%s' (see errors above)", found.owner_repo),
+              vim.log.levels.WARN
+            )
           end
         else
-          print(string.format("packard: plugin '%s' not found", target))
+          vim.notify(string.format("packard: plugin '%s' not found", target), vim.log.levels.WARN)
         end
       else
         -- Rebuild all plugins with build steps
@@ -56,21 +59,22 @@ function M.register_commands(ctx)
           end
         end
         if count == 0 then
-          print("packard: no plugins with build steps")
+          vim.notify("packard: no plugins with build steps", vim.log.levels.INFO)
         else
-          print(
+          vim.notify(
             string.format(
               "packard: rebuilt %d plugin(s)%s",
               count,
               failures > 0 and string.format(" (%d failed)", failures) or ""
-            )
+            ),
+            failures > 0 and vim.log.levels.WARN or vim.log.levels.INFO
           )
         end
       end
     elseif sub == "help" then
       UI.open(ctx.plugins, "help", ctx._is_offline)
     else
-      print("packard: unknown subcommand '" .. sub .. "'")
+      vim.notify("packard: unknown subcommand '" .. sub .. "'", vim.log.levels.WARN)
     end
   end, {
     nargs = "*",
