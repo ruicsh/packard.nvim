@@ -1,43 +1,54 @@
 local Helpers = require("tests.helpers")
 local Utils = require("packard.utils")
 
+-- Cross-platform absolute-path check: Unix starts with `/`, Windows starts with a drive letter.
+local function is_absolute(path)
+  return path:sub(1, 1) == "/" or path:match("^[a-zA-Z]:") ~= nil
+end
+
+-- A guaranteed-absolute path for the current platform (CWD in forward-slash form).
+local cwd_abs = vim.fn.getcwd():gsub("\\", "/")
+cwd_abs = cwd_abs:match("(.+)/$") and cwd_abs:sub(1, -2) or cwd_abs
+
 Helpers.describe("Utils.norm", function()
   Helpers.it("expands tilde to home directory", function()
     local result = Utils.norm("~/projects/foo.nvim")
-    Helpers.expect(result:sub(1, 1) == "/").to_be_truthy()
+    Helpers.expect(result:sub(1, 1) ~= "~").to_be_truthy()
+    Helpers.expect(is_absolute(result)).to_be_truthy()
     Helpers.expect(string.find(result, "projects/foo.nvim", 1, true) ~= nil).to_be_truthy()
   end)
 
   Helpers.it("resolves relative paths to absolute", function()
     local result = Utils.norm("./my-plugin")
-    Helpers.expect(result:sub(1, 1) == "/").to_be_truthy()
+    Helpers.expect(is_absolute(result)).to_be_truthy()
     Helpers.expect(string.find(result, "my-plugin", 1, true) ~= nil).to_be_truthy()
   end)
 
   Helpers.it("resolves parent-relative paths to absolute", function()
     local result = Utils.norm("../my-plugin")
-    Helpers.expect(result:sub(1, 1) == "/").to_be_truthy()
+    Helpers.expect(is_absolute(result)).to_be_truthy()
     Helpers.expect(string.find(result, "my-plugin", 1, true) ~= nil).to_be_truthy()
   end)
 
   Helpers.it("keeps absolute paths unchanged", function()
-    local result = Utils.norm("/usr/local/my-plugin")
-    Helpers.expect(result).to_be("/usr/local/my-plugin")
+    local result = Utils.norm(cwd_abs)
+    Helpers.expect(result).to_be(cwd_abs)
   end)
 
   Helpers.it("strips trailing slash", function()
-    local result = Utils.norm("/usr/local/my-plugin/")
-    Helpers.expect(result).to_be("/usr/local/my-plugin")
+    local result = Utils.norm(cwd_abs .. "/")
+    Helpers.expect(result).to_be(cwd_abs)
   end)
 
   Helpers.it("deduplicates internal slashes", function()
-    local result = Utils.norm("/usr//local///my-plugin")
-    Helpers.expect(result).to_be("/usr/local/my-plugin")
+    local dupe = cwd_abs:gsub("/", "//")
+    local result = Utils.norm(dupe)
+    Helpers.expect(result).to_be(cwd_abs)
   end)
 
   Helpers.it("resolves bare names to absolute", function()
     local result = Utils.norm("my-plugin")
-    Helpers.expect(result:sub(1, 1) == "/").to_be_truthy()
+    Helpers.expect(is_absolute(result)).to_be_truthy()
     Helpers.expect(string.find(result, "my-plugin", 1, true) ~= nil).to_be_truthy()
   end)
 end)
