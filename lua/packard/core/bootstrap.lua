@@ -126,9 +126,11 @@ function M.bootstrap(ctx)
               -- Run build step for the updated plugin
               if plugin and not plugin.is_local then
                 local plugin_path = Utils.get_plugin_path(plugin)
-                if plugin.build ~= nil or Build._get_build_file(plugin_path) then
-                  Build.run(plugin)
-                  plugin._has_build = true
+                if (plugin.build ~= nil and plugin.build ~= false) or Build._get_build_file(plugin_path) then
+                  local ok = Build.run(plugin)
+                  plugin._has_build = ok
+                else
+                  plugin._has_build = false
                 end
               end
             end
@@ -227,7 +229,7 @@ function M.bootstrap(ctx)
     if not pre_installed[plugin.name] or plugin.is_local then
       -- Plugin was just installed; check if it has a build step
       local plugin_path = Utils.get_plugin_path(plugin)
-      if plugin.build ~= nil or Build._get_build_file(plugin_path) then
+      if (plugin.build ~= nil and plugin.build ~= false) or Build._get_build_file(plugin_path) then
         Build.run(plugin)
       end
     end
@@ -236,7 +238,7 @@ function M.bootstrap(ctx)
   -- Cache whether each plugin has a build step (avoids repeated filereadable calls in the UI).
   for _, plugin in ipairs(ctx.plugins) do
     local plugin_path = Utils.get_plugin_path(plugin)
-    plugin._has_build = plugin.build ~= nil or Build._get_build_file(plugin_path) ~= nil
+    plugin._has_build = (plugin.build ~= nil and plugin.build ~= false) or Build._get_build_file(plugin_path) ~= nil
   end
 
   -- Auto-resolve undeclared dependencies

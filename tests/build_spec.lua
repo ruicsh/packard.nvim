@@ -44,6 +44,41 @@ Helpers.describe("Build module", function()
     vim.fn.delete(temp_dir, "rf")
   end)
 
+  Helpers.it("skips build.lua when build is false (explicit skip even with file present)", function()
+    -- Create a temp dir with a build.lua file
+    local temp_dir, cleanup = Helpers.with_temp_dir({
+      ["build.lua"] = [[
+        io.open(vim.fn.stdpath("state") .. "/build_was_run_marker", "w"):close()
+      ]],
+    })
+
+    -- Remove any leftover marker
+    local marker_path = vim.fn.stdpath("state") .. "/build_was_run_marker"
+    pcall(vim.fn.delete, marker_path)
+
+    local plugin = {
+      owner_repo = "test/plugin",
+      name = "plugin",
+      build = false,
+    }
+    local Utils = require("packard.utils")
+    local orig_get_path = Utils.get_plugin_path
+    Utils.get_plugin_path = function(name)
+      return temp_dir
+    end
+
+    local ok = Build.run(plugin)
+    Helpers.expect(ok).to_be(true)
+
+    -- Verify build.lua was NOT executed
+    local marker_exists = vim.fn.filereadable(marker_path) == 1
+    Helpers.expect(marker_exists).to_be(false)
+
+    Utils.get_plugin_path = orig_get_path
+    cleanup()
+    pcall(vim.fn.delete, marker_path)
+  end)
+
   Helpers.it("returns true when no build field and no build.lua", function()
     local plugin = {
       owner_repo = "test/plugin",

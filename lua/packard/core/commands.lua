@@ -51,7 +51,7 @@ function M.register_commands(ctx)
         local count = 0
         local failures = 0
         for _, p in ipairs(ctx.plugins) do
-          if p.build ~= nil or Build._get_build_file(Utils.get_plugin_path(p)) then
+          if (p.build ~= nil and p.build ~= false) or Build._get_build_file(Utils.get_plugin_path(p)) then
             count = count + 1
             if not Build.run(p, { force = true }) then
               failures = failures + 1
