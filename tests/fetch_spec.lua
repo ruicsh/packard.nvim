@@ -38,7 +38,6 @@ Helpers.describe("Fetch.check_all", function()
         url = "https://github.com/user/repo",
         owner_repo = "user/repo",
         minimum_release_age = 0,
-        lazy = true,
         spec = {},
       },
     })
@@ -56,7 +55,6 @@ Helpers.describe("Fetch.check_all", function()
         url = "https://github.com/user/repo",
         owner_repo = "user/repo",
         minimum_release_age = 0,
-        lazy = true,
         spec = {},
       },
     })
@@ -80,7 +78,7 @@ Helpers.describe("Fetch.check_all", function()
     mock_commands["git rev-parse origin/main"] = { code = 0, stdout = "new-sha-123\n" }
 
     local results = Fetch.check_all({
-      { name = "repo", url = url, owner_repo = "user/repo", minimum_release_age = 0, lazy = true, spec = {} },
+      { name = "repo", url = url, owner_repo = "user/repo", minimum_release_age = 0, spec = {} },
     })
 
     Helpers.expect(#results).to_be(1)
@@ -112,7 +110,7 @@ Helpers.describe("Fetch.check_all", function()
     end
 
     local results = Fetch.check_all({
-      { name = "repo", url = url, owner_repo = "user/repo", minimum_release_age = 0, lazy = true, spec = {} },
+      { name = "repo", url = url, owner_repo = "user/repo", minimum_release_age = 0, spec = {} },
     })
 
     Helpers.expect(#results).to_be(1)
@@ -147,7 +145,7 @@ Helpers.describe("Fetch.check_all", function()
     end
 
     local results = Fetch.check_all({
-      { name = "repo", url = url, owner_repo = "user/repo", minimum_release_age = 0, lazy = true, spec = {} },
+      { name = "repo", url = url, owner_repo = "user/repo", minimum_release_age = 0, spec = {} },
     })
 
     Helpers.expect(#results).to_be(1)
@@ -182,7 +180,7 @@ Helpers.describe("Fetch.check_all", function()
     end
 
     local results = Fetch.check_all({
-      { name = "repo", url = url, owner_repo = "user/repo", minimum_release_age = 0, lazy = true, spec = {} },
+      { name = "repo", url = url, owner_repo = "user/repo", minimum_release_age = 0, spec = {} },
     })
 
     Helpers.expect(#results).to_be(1)

@@ -320,7 +320,9 @@ Helpers.describe("End-to-end flow", function()
 
     -- Reset vim.pack overrides from prior tests to the original no-op stubs
     vim.pack.add = function() end
-    vim.pack.get = function() return {} end
+    vim.pack.get = function()
+      return {}
+    end
 
     -- Setup with a high min_age so the entry stays in cooldown
     packard.setup({

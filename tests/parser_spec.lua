@@ -13,6 +13,8 @@ end
 
 local original_bootstrap = packard._bootstrap
 packard._bootstrap = function() end
+local original_setup_eager_load = packard._setup_eager_load
+packard._setup_eager_load = function() end
 
 local function assert_error(fn, msg)
   local ok, err = pcall(fn)
@@ -74,40 +76,6 @@ local function test_defaults_and_overrides()
   -- Test global default fallback
   packard.setup({ self_management = false, plugins = { "plugin/d" } })
   assert(packard.plugins[1].minimum_release_age == 30)
-end
-
-local function test_lazy_load_fields()
-  print("Testing lazy load fields...")
-  local config_fn = function() end
-  local init_fn = function() end
-  packard.setup({
-    self_management = false,
-    plugins = {
-      {
-        "plugin/e",
-        lazy = false,
-        priority = 50,
-        event = "BufRead",
-        cmd = "MyCmd",
-        keys = "<leader>x",
-        ft = { "lua", "python" },
-        config = config_fn,
-        init = init_fn,
-        opts = { x = 1 },
-      },
-    },
-  })
-
-  local p = packard.plugins[1]
-  assert(p.lazy == false)
-  assert(p.priority == 50)
-  assert(p.event == "BufRead")
-  assert(p.cmd == "MyCmd")
-  assert(p.keys == "<leader>x")
-  assert(type(p.ft) == "table" and p.ft[1] == "lua")
-  assert(p.config == config_fn)
-  assert(p.init == init_fn)
-  assert(p.opts.x == 1)
 end
 
 local function test_config_true()
@@ -190,25 +158,15 @@ local function test_dependencies()
 
   assert(packard.plugins[1].is_dependency == true)
   assert(packard.plugins[3].is_dependency == false)
-  assert(packard.plugins[1].lazy == false) -- Auto-injected deps are eager
-  assert(packard.plugins[3].lazy == true) -- Default is lazy
 
-  -- 1a. Dependency should be eager even if declared as top-level lazy plugin
+  -- 1a. Dependency should be eager even if declared as top-level plugin
   packard.setup({
     self_management = false,
     plugins = {
       { "owner/repo", dependencies = { "dep/a" } },
-      { "dep/a", lazy = true },
+      { "dep/a" },
     },
   })
-  local lib
-  for _, p in ipairs(packard.plugins) do
-    if p.owner_repo == "dep/a" then
-      lib = p
-      break
-    end
-  end
-  assert(lib.lazy == false)
 
   -- 2. No duplicates if dep is already declared
   packard.setup({
@@ -474,10 +432,80 @@ local function test_version_fields()
     packard.setup({ self_management = false, plugins = { { "a/b", version = ">>1.0" } } })
   end, "invalid version constraint")
 end
+local function test_spec_merging()
+  print("Testing spec merging...")
+
+  -- 1. Merging keys, opts, and dependencies
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { "owner/repo", keys = { "k1" }, opts = { a = 1 }, dependencies = { "dep/1" } },
+      { "owner/repo", keys = { "k2" }, opts = { b = 2 }, dependencies = { "dep/2" } },
+    },
+  })
+
+  assert(#packard.plugins == 3) -- dep/1, dep/2, owner/repo
+  local p = packard.plugins[3]
+  assert(p.owner_repo == "owner/repo")
+  assert(#p.keys == 2)
+  assert(p.keys[1] == "k1")
+  assert(p.keys[2] == "k2")
+  assert(p.opts.a == 1)
+  assert(p.opts.b == 2)
+  assert(#p.dependencies == 2)
+  assert(p.dependencies[1].owner_repo == "dep/1")
+  assert(p.dependencies[2].owner_repo == "dep/2")
+
+  -- 2. Merging function-based keys
+  packard.setup({
+    self_management = false,
+    plugins = {
+      {
+        "owner/func",
+        keys = function()
+          return { "fk1" }
+        end,
+      },
+      { "owner/func", keys = { "fk2" } },
+    },
+  })
+
+  assert(#packard.plugins == 1)
+  local pf = packard.plugins[1]
+  assert(type(pf.keys) == "function")
+  local keys = pf.keys()
+  assert(#keys == 2)
+  assert(keys[1] == "fk1")
+  assert(keys[2] == "fk2")
+
+  -- 3. Last one wins for config/init
+  local init_calls = 0
+  packard.setup({
+    self_management = false,
+    plugins = {
+      {
+        "owner/last",
+        init = function()
+          init_calls = init_calls + 1
+        end,
+      },
+      {
+        "owner/last",
+        init = function()
+          init_calls = init_calls + 10
+        end,
+      },
+    },
+  })
+
+  assert(#packard.plugins == 1)
+  packard.plugins[1].init()
+  assert(init_calls == 10)
+end
 
 test_normalization()
+
 test_defaults_and_overrides()
-test_lazy_load_fields()
 test_config_true()
 test_errors()
 test_dependencies()
@@ -491,5 +519,6 @@ test_dir_and_source_error()
 test_dir_missing_source_and_dir()
 test_dir_empty_string_error()
 test_dir_non_string_error()
+test_spec_merging()
 
 print("Parser tests passed!")
