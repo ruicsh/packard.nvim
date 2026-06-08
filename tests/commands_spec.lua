@@ -216,6 +216,46 @@ Helpers.describe("core/commands.lua", function()
     end
     Helpers.expect(found).to_be_truthy()
   end)
+
+  Helpers.it("diagnose subcommand shows no match for unknown plugin", function()
+    reset_notify()
+    local packard = require("packard")
+    -- Ensure there are plugins loaded
+    packard._plugins = packard._plugins or {}
+    table.insert(packard._plugins, { name = "test-plugin", owner_repo = "user/test-plugin" })
+
+    vim.api.nvim_cmd({
+      cmd = "Packard",
+      args = { "diagnose", "nonexistent" },
+    }, {})
+
+    local found_no_match = false
+    for _, nc in ipairs(notify_calls) do
+      if nc.msg:find("no plugin found") then
+        found_no_match = true
+        break
+      end
+    end
+    Helpers.expect(found_no_match).to_be_truthy()
+  end)
+
+  Helpers.it("diagnose subcommand finds matching plugin", function()
+    reset_notify()
+
+    vim.api.nvim_cmd({
+      cmd = "Packard",
+      args = { "diagnose", "test-plugin" },
+    }, {})
+
+    local found_match = false
+    for _, nc in ipairs(notify_calls) do
+      if nc.msg:find("test-plugin", 1, true) then
+        found_match = true
+        break
+      end
+    end
+    Helpers.expect(found_match).to_be_truthy()
+  end)
 end)
 
 -- Restore

@@ -73,6 +73,26 @@ function M.register_commands(ctx)
       end
     elseif sub == "help" then
       UI.open(ctx.plugins, "help", ctx._is_offline)
+    elseif sub == "diagnose" then
+      local target = opts.fargs[2] or ""
+      -- Use ctx.plugins directly (same semantics as M._diagnose but avoids re-requiring)
+      local results = {}
+      for _, p in ipairs(ctx.plugins) do
+        if p.name:find(target, 1, true) or p.owner_repo:find(target, 1, true) then
+          results[p.owner_repo] = {
+            name = p.name,
+            owner_repo = p.owner_repo,
+            is_local = p.is_local,
+            dir = p.dir,
+            _cond = p._cond,
+          }
+        end
+      end
+      if next(results) then
+        vim.notify("[packard] diagnose:\n" .. vim.inspect(results), vim.log.levels.INFO)
+      else
+        vim.notify(string.format("[packard] diagnose: no plugin found matching '%s'", target), vim.log.levels.WARN)
+      end
     else
       vim.notify("packard: unknown subcommand '" .. sub .. "'", vim.log.levels.WARN)
     end
@@ -82,7 +102,7 @@ function M.register_commands(ctx)
       local l = vim.split(line, "%s+")
       local n = #l
       if n == 2 then
-        local candidates = { "check", "review", "summary", "clean", "build", "help" }
+        local candidates = { "check", "review", "summary", "clean", "build", "diagnose", "help" }
         local res = {}
         for _, c in ipairs(candidates) do
           if c:sub(1, #l[2]) == l[2] then
@@ -90,7 +110,7 @@ function M.register_commands(ctx)
           end
         end
         return res
-      elseif n == 3 and l[2] == "build" then
+      elseif n == 3 and (l[2] == "build" or l[2] == "diagnose") then
         -- Complete plugin names for :Packard build <name>
         local res = {}
         for _, p in ipairs(ctx.plugins) do
