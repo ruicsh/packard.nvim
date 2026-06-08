@@ -10,6 +10,7 @@ local Parser = {}
 ---@field url string|nil nil for local (dir-based) plugins
 ---@field dir string|nil Absolute normalized path for local plugins
 ---@field is_local boolean true when dir is provided (no remote git operations)
+---@field pin boolean|nil
 ---@field branch string|nil
 ---@field version string|nil
 ---@field tag string|nil
@@ -120,6 +121,7 @@ function Parser.merge_specs(existing, spec, owner_repo)
     "build",
     "dir",
     "name",
+    "pin",
   }
   for _, field in ipairs(override_fields) do
     if spec[field] ~= nil then
@@ -189,6 +191,7 @@ function Parser.parse_all(plugins, defaults)
       version = pin.version,
       tag = pin.tag,
       commit = pin.commit,
+      pin = pin.pin,
       minimum_release_age = pin.min_age,
       priority = spec.priority,
       config = spec.config,

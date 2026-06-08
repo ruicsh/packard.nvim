@@ -13,13 +13,18 @@ function M.validate_dir(spec)
   end
 end
 
----Validate and resolve pin fields (branch, tag, commit, version, minimum_release_age).
+---Validate and resolve pin fields (branch, tag, commit, version, minimum_release_age, pin).
 ---@param spec table Raw plugin spec
 ---@param owner_repo string
 ---@param defaults table
----@return { branch: string|nil, tag: string|nil, commit: string|nil, version: string|nil, min_age: number }
+---@return { branch: string|nil, tag: string|nil, commit: string|nil, version: string|nil, min_age: number, pin: boolean|nil }
 function M.pin_fields(spec, owner_repo, defaults)
   local branch = spec.branch
+
+  local pin = spec.pin
+  if pin ~= nil and type(pin) ~= "boolean" then
+    error(string.format("packard: 'pin' for '%s' must be a boolean", owner_repo))
+  end
 
   local tag = spec.tag
   if tag and type(tag) ~= "string" then
@@ -38,7 +43,7 @@ function M.pin_fields(spec, owner_repo, defaults)
 
   -- Resolve version
   local version = spec.version
-  if version == nil and not tag and not commit and not branch then
+  if version == nil and not tag and not commit and not branch and not pin then
     version = defaults.version
   end
   if version == false then
@@ -63,6 +68,7 @@ function M.pin_fields(spec, owner_repo, defaults)
     commit = commit,
     version = version,
     min_age = min_age,
+    pin = pin,
   }
 end
 
