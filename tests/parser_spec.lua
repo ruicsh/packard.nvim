@@ -432,6 +432,47 @@ local function test_version_fields()
     packard.setup({ self_management = false, plugins = { { "a/b", version = ">>1.0" } } })
   end, "invalid version constraint")
 end
+
+local function test_pin_field()
+  print("Testing pin field...")
+
+  -- 1. pin = true parsed correctly
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { "owner/pinned", pin = true },
+    },
+  })
+  local p = packard.plugins[1]
+  assert(p.owner_repo == "owner/pinned")
+  assert(p.pin == true, "pin should be true")
+
+  -- 2. pin = false parsed correctly
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { "owner/unpinned", pin = false },
+    },
+  })
+  local p2 = packard.plugins[1]
+  assert(p2.pin == false, "pin should be false")
+
+  -- 3. No pin is nil
+  packard.setup({
+    self_management = false,
+    plugins = {
+      "owner/no-pin",
+    },
+  })
+  local p3 = packard.plugins[1]
+  assert(p3.pin == nil, "pin should be nil when not set")
+
+  -- 4. Invalid pin type raises error
+  assert_error(function()
+    packard.setup({ self_management = false, plugins = { { "a/b", pin = "yes" } } })
+  end, "must be a boolean")
+end
+
 local function test_spec_merging()
   print("Testing spec merging...")
 
@@ -559,6 +600,7 @@ test_dependencies()
 test_complex_dependencies()
 test_main_field()
 test_version_fields()
+test_pin_field()
 test_dir_local_plugin()
 test_dir_with_name()
 test_dir_tilde_expansion()

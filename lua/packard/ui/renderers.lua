@@ -75,6 +75,9 @@ return function(UI)
         if plugin._has_build then
           name_display = name_display .. " [build]"
         end
+        if plugin.pin then
+          name_display = name_display .. " [pinned]"
+        end
 
         table.insert(lines, string.format(fmt, icon, name_display, commit:sub(1, 7), branch_display, cooldown))
         UI.line_map[#lines] = plugin.owner_repo

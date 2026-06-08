@@ -83,6 +83,24 @@ Helpers.describe("Fetch.check_all", function()
     Helpers.expect(results[1].error).to_be("not installed")
   end)
 
+  Helpers.it("skips pinned plugins without fetching", function()
+    local results = Fetch.check_all({
+      {
+        name = "pinned",
+        url = "https://github.com/user/pinned",
+        owner_repo = "user/pinned",
+        pin = true,
+        minimum_release_age = 0,
+        spec = {},
+      },
+    })
+
+    Helpers.expect(#results).to_be(1)
+    Helpers.expect(results[1].success).to_be(true)
+    Helpers.expect(results[1].new_sha).to_be_nil()
+    Helpers.expect(results[1].owner_repo).to_be("user/pinned")
+  end)
+
   ----------------------------------------------------------------------------
   -- Branch-tracked: success and SHA
   ----------------------------------------------------------------------------
