@@ -1,9 +1,8 @@
 ---@private
----Core orchestration: plugin spec merging, init function execution, and the
----main setup() entrypoint that wires everything together.
+---Core orchestration: plugin spec merging and the main setup() entrypoint
+---that wires everything together.
 
 local Cooldown = require("packard.cooldown")
-local Lazy = require("packard.lazy")
 local Loader = require("packard.loader")
 local Parser = require("packard.parser")
 local UI = require("packard.ui")
@@ -11,81 +10,9 @@ local Utils = require("packard.utils")
 
 local M = {}
 
----@private
----Merge trigger fields from new_spec into existing_spec (raw spec tables).
----@param existing table Plugin spec already in final_specs
----@param new_spec table Duplicate plugin spec to merge triggers from
-function M.merge_spec_triggers(existing, new_spec)
-  local trigger_fields = { "keys", "cmd", "event", "ft" }
-  for _, field in ipairs(trigger_fields) do
-    local a = existing[field]
-    local b = new_spec[field]
-    if a and b then
-      local merged = {}
-      local seen = {}
-      local function add(val)
-        if val == nil then
-          return
-        end
-        if type(val) == "string" then
-          if not seen[val] then
-            seen[val] = true
-            table.insert(merged, val)
-          end
-        elseif type(val) == "table" then
-          local key = vim.inspect(val)
-          if not seen[key] then
-            seen[key] = true
-            table.insert(merged, val)
-          end
-        elseif type(val) == "function" then
-          table.insert(merged, val)
-        end
-      end
-      local function flatten(v)
-        if type(v) == "table" then
-          if v[1] ~= nil then
-            for _, item in ipairs(v) do
-              add(item)
-            end
-          elseif next(v) then
-            add(v)
-          end
-        else
-          add(v)
-        end
-      end
-      flatten(a)
-      flatten(b)
-      existing[field] = merged
-    elseif b then
-      existing[field] = b
-    end
-  end
-end
-
----@private
----Execute all plugin init() functions. These run at startup, before any
----plugin code loads, matching lazy.nvim semantics: init is meant for early
----vim.g.* / vim.opt.* setup needed by VimScript plugins.
----@param plugins table List of plugins to process
-function M.run_init_functions(plugins)
-  for _, plugin in ipairs(plugins) do
-    if not plugin._cond and type(plugin.init) == "function" then
-      local ok, err = pcall(plugin.init, plugin)
-      if not ok then
-        vim.notify(
-          string.format("packard: init() error for '%s': %s", plugin.owner_repo, tostring(err)),
-          vim.log.levels.ERROR
-        )
-      end
-    end
-  end
-end
-
 ---Initialize packard.nvim
 ---@param opts table
----@param ctx table The packard M table (provides .config, .plugins, ._bootstrap, ._setup_lazy_load, ._register_commands, ._run_init_functions)
+---@param ctx table The packard M table (provides .config, .plugins, ._bootstrap, ._setup_eager_load, ._register_commands)
 function M.setup(opts, ctx)
   -- NFR-003: Neovim version guard
   --[[@diagnostic disable-next-line: undefined-field]]
@@ -130,7 +57,6 @@ function M.setup(opts, ctx)
       error("packard.setup: 'plugins' must be a table")
     end
     -- Merge: file specs first, then inline
-    -- TODO(FR-039): implement inline-wins dedup — currently Parser raises on duplicate.
     vim.list_extend(plugins, file_specs)
     vim.list_extend(plugins, opts.plugins)
   else
@@ -162,8 +88,7 @@ function M.setup(opts, ctx)
   }
 
   -- T-1.3.2: Include packard itself if not disabled
-  -- Merge trigger fields (keys, cmd, event, ft) from duplicate specs.
-  -- Non-trigger fields: last occurrence wins (so inline wins over file specs).
+  -- Last occurrence wins (so inline wins over file specs).
   local final_specs = {}
   local seen = {}
 
@@ -219,41 +144,9 @@ function M.setup(opts, ctx)
         table.insert(final_specs, p)
         seen[source] = p
       else
-        -- Duplicate found: merge trigger fields, override non-trigger fields with later spec
+        -- Duplicate found: override with later spec
         local existing = seen[source]
-        M.merge_spec_triggers(existing, p)
-        -- Non-trigger fields: later spec wins (so inline wins over file specs)
-        local non_trigger = {
-          "branch",
-          "version",
-          "tag",
-          "commit",
-          "minimum_release_age",
-          "lazy",
-          "priority",
-          "config",
-          "init",
-          "ai_review",
-          "cond",
-          "build",
-          "dir",
-          "name",
-        }
-        for _, field in ipairs(non_trigger) do
-          if p[field] ~= nil then
-            existing[field] = p[field]
-          end
-        end
-        -- opts is deep-merged: all duplicate specs' submodule configs compose together
-        -- (e.g. snacks.picker + snacks.zen both contribute to the final opts table)
-        if p.opts ~= nil then
-          if type(existing.opts) == "table" and type(p.opts) == "table" then
-            existing.opts = vim.tbl_deep_extend("force", existing.opts, p.opts)
-          else
-            -- Non-table opts (e.g. functions): fall back to last-wins
-            existing.opts = p.opts
-          end
-        end
+        Parser.merge_specs(existing, p, source)
       end
     end
   end
@@ -301,22 +194,17 @@ function M.setup(opts, ctx)
     elseif cond == false then
       plugin._cond = true
     end
-    -- nil or true → no _cond flag, plugin loads normally
   end
 
   -- Share config with UI
   UI.config = ctx.config
 
-  -- Run init() functions at startup, before any plugin code loads
-  M.run_init_functions(ctx.plugins)
-
   -- Set debug-mode flags before execution
-  Lazy._debug = opts.debug or false
+  Loader._debug = opts.debug or false
   Utils._debug = opts.debug or false
 
   ctx._bootstrap()
-  ctx._setup_lazy_load()
-  ctx._setup_colorscheme()
+  ctx._setup_eager_load()
   ctx._register_commands()
 
   -- T-7.1: Startup notification

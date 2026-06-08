@@ -107,20 +107,4 @@ function M.runtime_fields(spec, owner_repo)
   end
 end
 
----Resolve lazy default: user plugins default to true, dependencies to false.
----@param spec table Raw plugin spec
----@param is_dep boolean Whether this plugin was auto-injected as a dependency
----@return boolean
-function M.resolve_lazy(spec, is_dep)
-  local lazy = spec.lazy
-  if lazy == nil then
-    if is_dep then
-      lazy = false -- Dependencies default to eager to ensure availability
-    else
-      lazy = true -- User plugins default to lazy
-    end
-  end
-  return lazy
-end
-
 return M

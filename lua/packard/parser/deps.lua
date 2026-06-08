@@ -54,12 +54,6 @@ function M.resolve_transitive(normalized, seen, normalize_one)
           local existing = seen[dep_owner_repo]
 
           if type(dep_spec) == "table" then
-            if dep_spec.lazy ~= nil then
-              existing.lazy = dep_spec.lazy
-            else
-              existing.lazy = false
-            end
-
             if dep_spec.branch ~= nil and existing.branch == nil then
               existing.branch = dep_spec.branch
             end
@@ -72,8 +66,6 @@ function M.resolve_transitive(normalized, seen, normalize_one)
             if dep_spec.commit ~= nil and existing.commit == nil then
               existing.commit = dep_spec.commit
             end
-          else
-            existing.lazy = false
           end
         end
 

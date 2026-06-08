@@ -105,7 +105,7 @@ function Build.run(plugin, opts)
   end
 
   -- Load the plugin so its commands (e.g., TSUpdate) are available for build steps
-  local ok_pack, pack_err = pcall(vim.cmd.packadd, plugin.name)
+  local ok_pack, pack_err = pcall(vim.cmd.packadd, { args = { plugin.name }, mods = { silent = true, emsg_silent = true } })
   if not ok_pack then
     vim.notify(
       string.format("packard: could not load plugin '%s' for build: %s", plugin.owner_repo, tostring(pack_err)),

@@ -2,7 +2,7 @@
 --
 -- Subsystem implementations live in:
 --   core/       — setup, check, commands, bootstrap
---   lazy/       — lazy-loading triggers and plugin config execution
+--   loader.lua  — plugin loading and configuration
 --
 -- This file wires them together, exposes the M table that callers
 -- (including tests) require as `local packard = require("packard")`.
@@ -11,7 +11,7 @@ local core_bootstrap = require("packard.core.bootstrap")
 local core_check = require("packard.core.check")
 local core_commands = require("packard.core.commands")
 local core_setup = require("packard.core.setup")
-local lazy = require("packard.lazy")
+local loader = require("packard.loader")
 
 local M = {}
 
@@ -33,30 +33,17 @@ M._is_checking = false
 M._is_offline = false
 
 ---@private
----Execute all plugin init() functions.
----Wrapper retained for test mocking (callers pass plugins explicitly).
----@param plugins table|nil Optional list of plugins to process (defaults to M.plugins)
-M._run_init_functions = function(plugins)
-  core_setup.run_init_functions(plugins or M.plugins)
-end
-
----@private
----Load and configure a single plugin (used by lazy triggers).
+---Load and configure a single plugin.
 ---@param plugin table NormalizedPlugin
 M._load_and_config = function(plugin)
-  lazy.load_and_config(plugin, M.plugins)
+  loader.load_and_config(plugin, M.plugins)
 end
 
 ---@private
----Set up lazy-loading triggers (keymaps, commands, events, filetypes).
-M._setup_lazy_load = function()
-  lazy.setup_lazy_load(M.plugins, M._load_and_config)
-end
 
----@private
----Set up colorscheme auto-load via ColorSchemePre autocmd.
-M._setup_colorscheme = function()
-  lazy.setup_colorscheme_autoload(M.plugins, M._load_and_config)
+---Set up eager loading for all plugins.
+M._setup_eager_load = function()
+  loader.setup_eager_load(M.plugins, M._load_and_config)
 end
 
 ---@private
@@ -75,7 +62,7 @@ end
 ---@param opts table
 function M.setup(opts)
   if opts and opts.debug then
-    lazy._debug = true
+    loader._debug = true
   end
   return core_setup.setup(opts, M)
 end
@@ -86,8 +73,7 @@ function M.check()
 end
 
 ---@private
----Diagnose a plugin's state: whether it was parsed, its lazy-load setup, and
----whether stub keymaps exist.
+---Diagnose a plugin's state.
 ---@param name string Plugin name or substring of owner_repo (e.g. "readline")
 ---@return table|nil
 function M._diagnose(name)
@@ -101,11 +87,7 @@ function M._diagnose(name)
         owner_repo = p.owner_repo,
         is_local = p.is_local,
         dir = p.dir,
-        lazy = p.lazy,
-        has_keys = p.keys ~= nil,
-        keys_type = type(p.keys),
         _cond = p._cond,
-        triggers = {},
       }
       local r = results[p.owner_repo]
 
@@ -115,42 +97,6 @@ function M._diagnose(name)
       r.lua_dir = lua_dir
       r.lua_dir_exists = vim.fn.isdirectory(lua_dir) == 1
       r.in_package_path = package.path:find(lua_dir, 1, true) ~= nil
-
-      -- Detect stub keymaps by checking vim.fn.mapcheck (non-destructive).
-      -- mapcheck returns a dict with the mapping info, or empty string if none.
-      r.found_mappings = {}
-      if p.keys then
-        local resolved = p.keys
-        if type(resolved) == "function" then
-          local ok, result = pcall(resolved)
-          if ok then
-            resolved = result
-          else
-            resolved = nil
-            r.keys_error = tostring(result)
-          end
-        end
-        if resolved then
-          local keys = type(resolved) == "table" and resolved or { resolved }
-          for _, k in ipairs(keys) do
-            local lhs = type(k) == "table" and (k[1] or k.lhs) or k
-            local mode_str = type(k) == "table" and k.mode or "n"
-            ---@type string[]
-            ---@diagnostic disable-next-line: assign-type-mismatch
-            local mode_list = type(mode_str) == "string" and { mode_str } or mode_str
-            for _, m in ipairs(mode_list) do
-              local existing = vim.fn.mapcheck(lhs, m)
-              if existing and type(existing) == "table" then
-                table.insert(
-                  r.found_mappings,
-                  string.format("mode=%s lhs=%s desc=%s", m, lhs, existing.desc or "(none)")
-                )
-              end
-            end
-          end
-          r.found_count = #r.found_mappings
-        end
-      end
     end
   end
 

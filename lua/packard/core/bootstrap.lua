@@ -245,11 +245,6 @@ function M.bootstrap(ctx)
   if #new_deps > 0 then
     -- Add to tracked plugins for future update checks
     vim.list_extend(ctx.plugins, new_deps)
-    -- Run init functions for any newly discovered dependencies.
-    -- verify_and_install() returns synthetic plugins with no user-provided init
-    -- today, so this call is a no-op. Kept for future-proofing if the dep
-    -- system ever supports user-provided init fields in dependency specs.
-    ctx._run_init_functions(new_deps)
   end
 
   -- Persist initial state on first run so it's explicitly tracked

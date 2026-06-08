@@ -144,7 +144,7 @@ function Deps.verify_and_install(plugins)
                   pack_spec = {
                     src = url,
                     name = name,
-                    opt = true, -- Auto-deps should follow packard's lazy default
+                    opt = true, -- Auto-deps are installed to 'opt' and manually loaded via packadd
                   },
                   owner_repo = owner_repo,
                   name = name,
@@ -188,7 +188,6 @@ function Deps.verify_and_install(plugins)
           owner_repo = dep.owner_repo,
           name = dep.name,
           url = dep.url,
-          lazy = true,
           minimum_release_age = 30,
           is_dependency = true,
           depended_by = dep.depended_by,

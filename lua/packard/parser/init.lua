@@ -15,7 +15,6 @@ local Parser = {}
 ---@field tag string|nil
 ---@field commit string|nil
 ---@field minimum_release_age number
----@field lazy boolean
 ---@field priority number|nil
 ---@field config function|boolean|nil
 ---@field main string|nil
@@ -34,6 +33,102 @@ local Parser = {}
 ---@field spec table Original spec fields
 ---@field _cond boolean|nil Internal flag set by init.lua when cond blocks loading
 ---@field _has_build boolean|nil Cached: true if plugin has a build step (explicit or auto-detected)
+
+---Merge fields from a new spec into an existing spec (raw or normalized).
+---@param existing table The existing spec or NormalizedPlugin
+---@param spec table The new spec to merge from
+---@param owner_repo string
+function Parser.merge_specs(existing, spec, owner_repo)
+  -- Merge dependencies
+  if spec.dependencies then
+    existing.dependencies = existing.dependencies or {}
+    -- If 'existing' is a NormalizedPlugin, it will have an owner_repo field.
+    -- Raw specs in setup.lua don't have this field yet.
+    if existing.owner_repo then
+      local new_deps = Deps.normalize(spec, owner_repo)
+      for _, nd in ipairs(new_deps or {}) do
+        table.insert(existing.dependencies, nd)
+      end
+    else
+      -- Raw spec merge
+      if type(existing.dependencies) == "table" and type(spec.dependencies) == "table" then
+        for _, dep in ipairs(spec.dependencies) do
+          table.insert(existing.dependencies, dep)
+        end
+      else
+        existing.dependencies = spec.dependencies
+      end
+    end
+  end
+
+  -- Merge keys
+  if spec.keys ~= nil then
+    if type(existing.keys) == "function" or type(spec.keys) == "function" then
+      local old_keys = existing.keys
+      local new_keys = spec.keys
+      existing.keys = function()
+        local res1 = type(old_keys) == "function" and old_keys() or old_keys or {}
+        if type(res1) ~= "table" then
+          res1 = { res1 }
+        end
+        local res2 = type(new_keys) == "function" and new_keys() or new_keys or {}
+        if type(res2) ~= "table" then
+          res2 = { res2 }
+        end
+        -- NOTE: vim.list_extend mutates res1 in place. Since res1 is often a
+        -- new table here, it's safe. Reassignment confirms the return value.
+        return vim.list_extend(res1, res2)
+      end
+    else
+      local old_keys = type(existing.keys) == "table" and existing.keys or { existing.keys }
+      local new_keys = type(spec.keys) == "table" and spec.keys or { spec.keys }
+      existing.keys = vim.list_extend(old_keys, new_keys)
+    end
+  end
+
+  -- Merge opts
+  if spec.opts ~= nil then
+    if type(existing.opts) == "table" and type(spec.opts) == "table" then
+      existing.opts = vim.tbl_deep_extend("force", existing.opts, spec.opts)
+    else
+      existing.opts = spec.opts
+    end
+  end
+
+  -- Merge cmd
+  if spec.cmd ~= nil then
+    if type(existing.cmd) == "table" and type(spec.cmd) == "table" then
+      for _, item in ipairs(spec.cmd) do
+        table.insert(existing.cmd, item)
+      end
+    else
+      existing.cmd = spec.cmd
+    end
+  end
+
+  -- Last one wins for other fields
+  local override_fields = {
+    "branch",
+    "version",
+    "tag",
+    "commit",
+    "minimum_release_age",
+    "priority",
+    "config",
+    "init",
+    "main",
+    "ai_review",
+    "cond",
+    "build",
+    "dir",
+    "name",
+  }
+  for _, field in ipairs(override_fields) do
+    if spec[field] ~= nil then
+      existing[field] = spec[field]
+    end
+  end
+end
 
 ---Normalize plugin specs: parse sources, validate fields, resolve dependencies,
 ---and produce a topologically-sorted list of NormalizedPlugin records.
@@ -70,8 +165,9 @@ function Parser.parse_all(plugins, defaults)
     -- Parse source (handles both remote and local)
     local owner_repo, name, url, is_local = Source.parse(source, spec)
 
-    -- Dedup
+    -- Merge specs for the same plugin
     if seen[owner_repo] then
+      Parser.merge_specs(seen[owner_repo], spec, owner_repo)
       return nil
     end
 
@@ -80,9 +176,6 @@ function Parser.parse_all(plugins, defaults)
 
     -- Validate runtime fields (config, init, main, build)
     Validate.runtime_fields(spec, owner_repo)
-
-    -- Resolve lazy default
-    local lazy = Validate.resolve_lazy(spec, is_dep)
 
     -- Normalize dependencies
     local deps = Deps.normalize(spec, owner_repo)
@@ -99,7 +192,6 @@ function Parser.parse_all(plugins, defaults)
       tag = pin.tag,
       commit = pin.commit,
       minimum_release_age = pin.min_age,
-      lazy = lazy,
       priority = spec.priority,
       config = spec.config,
       main = spec.main,
