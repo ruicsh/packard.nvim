@@ -616,7 +616,131 @@ Helpers.describe("UI Dashboard", function()
   end)
 end)
 
+-- Mock Orphans module for clean handler tests
+local Orphans = require("packard.orphans")
+local original_orphans_find = Orphans.find_orphans
+--[[@diagnostic disable-next-line: duplicate-set-field]]
+Orphans.find_orphans = function(_plugins, _state)
+  return {
+    dirs = { "orphan-dir" },
+    state = { "orphan/state" },
+  }
+end
+
+local original_ui_handle_clean_orphans = UI.handle_clean_orphans
+
+Helpers.describe("handle_clean_orphans", function()
+  Helpers.it("cleans selected orphans", function()
+    local plugins = {}
+    UI.open(plugins, "clean")
+
+    -- Mock State.purge_stale_metadata
+    local purged = {}
+    local original_purge = State.purge_stale_metadata
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    State.purge_stale_metadata = function(owner_repo)
+      table.insert(purged, owner_repo)
+    end
+
+    -- Mock vim.pack.del
+    local deleted_dirs = {}
+    local original_pack_del = vim.pack and vim.pack.del
+    if not vim.pack then
+      vim.pack = {}
+    end
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    vim.pack.del = function(names)
+      for _, name in ipairs(names) do
+        table.insert(deleted_dirs, name)
+      end
+      return true
+    end
+
+    -- Select orphans
+    UI.selected_orphans["orphan-dir"] = true
+    UI.selected_orphans["orphan/state"] = true
+
+    -- Mock vim.fn.confirm to return Yes
+    local original_confirm = vim.fn.confirm
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    vim.fn.confirm = function(_msg, _choices)
+      return 1 -- Yes
+    end
+
+    -- Mock State.read
+    local old_state_read = State.read
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    State.read = function()
+      return { queue = {}, blacklist = {}, update_log = {} }
+    end
+
+    UI.handle_clean_orphans()
+
+    -- Verify dir was cleaned
+    Helpers.expect(#deleted_dirs >= 1).to_be_truthy()
+    local found_dir = false
+    for _, d in ipairs(deleted_dirs) do
+      if d == "orphan-dir" then
+        found_dir = true
+        break
+      end
+    end
+    Helpers.expect(found_dir).to_be_truthy()
+
+    -- Verify state was purged
+    local found_state = false
+    for _, sr in ipairs(purged) do
+      if sr == "orphan/state" then
+        found_state = true
+        break
+      end
+    end
+    Helpers.expect(found_state).to_be_truthy()
+
+    -- Cleanup
+    State.purge_stale_metadata = original_purge
+    State.read = old_state_read
+    vim.fn.confirm = original_confirm
+    UI.selected_orphans = {}
+    UI.close()
+  end)
+
+  Helpers.it("shows warning when no orphans selected", function()
+    UI.open({}, "clean")
+    UI.selected_orphans = {}
+
+    local print_calls = {}
+    local original_print = print
+    print = function(msg)
+      table.insert(print_calls, msg)
+    end
+
+    -- Mock vim.fn.confirm
+    local original_confirm = vim.fn.confirm
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    vim.fn.confirm = function()
+      return 1
+    end
+
+    UI.handle_clean_orphans()
+
+    local found = false
+    for _, msg in ipairs(print_calls) do
+      if msg:find("no orphans") then
+        found = true
+        break
+      end
+    end
+    Helpers.expect(found).to_be_truthy()
+
+    print = original_print
+    vim.fn.confirm = original_confirm
+    UI.close()
+  end)
+end)
+
 -- Restore
 State.read = original_state_read
 Cooldown.get_status = original_cooldown_get_status
 Lockfile.get_installed_commit = original_lockfile_get_installed
+Orphans.find_orphans = original_orphans_find
