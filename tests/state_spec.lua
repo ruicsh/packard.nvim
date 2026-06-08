@@ -109,4 +109,3 @@ Helpers.describe("State Manager", function()
 end)
 
 print("State Manager tests passed!")
-
