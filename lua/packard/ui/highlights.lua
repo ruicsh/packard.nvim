@@ -1,6 +1,6 @@
 ---@class packard.ui.highlights
 ---Dashboard highlight group definitions and extmark application.
----Defines 29 named highlight groups with sensible defaults linked to Neovim
+---Defines named highlight groups with sensible defaults linked to Neovim
 ---built-in groups. Supports user overrides and auto-re-applies on
 ---`ColorScheme` changes.
 
@@ -85,10 +85,13 @@ return function(UI)
           hl_group = em.hl_group,
         })
         -- Highlight the shortcut key within the pill
-        vim.api.nvim_buf_set_extmark(buf, ns, 1, em.key_start, {
-          end_col = em.key_end,
-          hl_group = "PackardKeyHint",
-        })
+        -- (badge-only extmarks omit key_start/key_end)
+        if em.key_start then
+          vim.api.nvim_buf_set_extmark(buf, ns, 1, em.key_start, {
+            end_col = em.key_end,
+            hl_group = "PackardKeyHint",
+          })
+        end
       end
     end
 

@@ -1,3 +1,5 @@
+local Cooldown = require("packard.cooldown")
+
 local UI = {
   win = nil,
   buf = nil,
@@ -177,12 +179,25 @@ function UI._do_render()
   vim.api.nvim_set_option_value("modifiable", true, { buf = UI.buf })
   UI.line_map = {}
 
+  -- Count pending reviews for the badge
+  local pending_count = 0
+  if UI.plugins and #UI.plugins > 0 then
+    local status = Cooldown.get_status(UI.plugins)
+    for _ in pairs(status.eligible) do
+      pending_count = pending_count + 1
+    end
+    for _ in pairs(status.cooldown) do
+      pending_count = pending_count + 1
+    end
+  end
+  local pending_badge = pending_count > 0 and string.format(" •%d", pending_count) or ""
+
   local lines = {}
   table.insert(lines, "") -- 1. empty line at top
   local tabs = {
     { id = "installed", label = "Installed", key = "I" },
     { id = "update", label = "Update", key = "U" },
-    { id = "pending", label = "Pending", key = "P" },
+    { id = "pending", label = "Pending" .. pending_badge, key = "P" },
     { id = "summary", label = "Summary", key = "S" },
     { id = "clean", label = "Clean", key = "C" },
     { id = "help", label = "Help", key = "?" },
@@ -208,6 +223,17 @@ function UI._do_render()
       key_start = start_col + #label + 3, -- offset for " " + label + " ("
       key_end = start_col + #label + 3 + #key,
     })
+
+    -- If this is the pending tab with a badge, add a badge extmark
+    if t.id == "pending" and pending_count > 0 then
+      local badge_start = end_col - #pending_badge - 1 -- before trailing space
+      local badge_end = end_col - 1 -- exclude trailing space
+      table.insert(UI._tab_extmarks, {
+        start_col = badge_start,
+        end_col = badge_end,
+        hl_group = "PackardEligible",
+      })
+    end
 
     current_col = end_col + 2 -- +2 for gap
   end

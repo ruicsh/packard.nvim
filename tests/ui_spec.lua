@@ -397,6 +397,68 @@ Helpers.describe("UI Dashboard", function()
     UI.close()
   end)
 
+  Helpers.it("shows pending badge count on Pending tab header", function()
+    local old_get_status = Cooldown.get_status
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    Cooldown.get_status = function()
+      return {
+        eligible = {
+          ["a/plugin"] = { commit = "abc1234", remaining_days = 0 },
+          ["b/plugin"] = { commit = "def5678", remaining_days = 0 },
+        },
+        cooldown = {
+          ["c/plugin"] = { commit = "ghi9012", remaining_days = 5 },
+        },
+      }
+    end
+
+    UI.open({ { name = "a/plugin", owner_repo = "a/plugin" } }, "installed")
+    UI._do_render()
+
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local found_badge = false
+    for _, line in ipairs(lines) do
+      if line:match("Pending") and line:match("•3") then
+        found_badge = true
+        break
+      end
+    end
+    Helpers.expect(found_badge).to_be_truthy()
+
+    -- Verify badge extmark exists
+    local packard_ns = vim.api.nvim_create_namespace("packard")
+    local extmarks = vim.api.nvim_buf_get_extmarks(UI.buf, packard_ns, 0, -1, { details = true })
+    local found_badge_extmark = false
+    for _, em in ipairs(extmarks) do
+      local details = em[4]
+      if details.hl_group == "PackardEligible" then
+        found_badge_extmark = true
+        break
+      end
+    end
+    Helpers.expect(found_badge_extmark).to_be_truthy()
+
+    -- Test with 0 pending — no badge
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    Cooldown.get_status = function()
+      return { eligible = {}, cooldown = {} }
+    end
+    UI._do_render()
+    lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+    local found_no_badge = true
+    for _, line in ipairs(lines) do
+      if line:match("Pending") and line:match("•") then
+        found_no_badge = false
+        break
+      end
+    end
+    Helpers.expect(found_no_badge).to_be_truthy()
+
+    -- Cleanup
+    Cooldown.get_status = old_get_status
+    UI.close()
+  end)
+
   Helpers.describe("handle_log", function()
     Helpers.it("shows log between installed and pending in Pending tab (inline)", function()
       local plugin =

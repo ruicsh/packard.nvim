@@ -1,566 +1,419 @@
-*packard.txt*  A security-first plugin manager for Neovim
+*packard.nvim*                    A security-first Neovim plugin manager
 
 ==============================================================================
-CONTENTS                                                    *packard-contents*
+Contents                                    *packard-contents*
 
-  1. Introduction ...................... |packard-intro|
-  2. Requirements ..................... |packard-requirements|
-  3. Setup ............................ |packard-setup|
-  4. Plugin Spec ...................... |packard-spec|
-     - Source Fields .................. |packard-spec-source|
-      - Eager Registration Fields ...... |packard-spec-eager|
-     - Setup Fields ................... |packard-spec-setup|
-     - Version Fields ................. |packard-spec-version|
-     - Build Field .................... |packard-spec-build|
-     - Gate Fields .................... |packard-spec-gate|
-  5. Directory-Based Spec Files ....... |packard-specs-dir|
-  6. Colorscheme Auto-Load ............ |packard-colorscheme|
-  7. Commands ......................... |packard-commands|
-  8. Dashboard ........................ |packard-dashboard|
-     - Tab Layouts .................... |packard-dashboard-tabs|
-     - Keybindings .................... |packard-dashboard-keys|
-  9. Security Model ................... |packard-security|
-  10. AI Review ....................... |packard-ai|
-  11. Highlight Groups ................ |packard-highlights|
-  12. Developer Tools ................. |packard-develop|
-  13. License ......................... |packard-license|
+  1. Introduction .......................... |packard-introduction|
+  2. Setup ................................. |packard-setup|
+  3. Plugin Spec .......................... |packard-spec|
+  4. Commands ............................. |packard-commands|
+  5. Dashboard Keybindings ............... |packard-dashboard|
+  6. Highlight Groups ..................... |packard-highlights|
+  7. AI Review ............................ |packard-ai|
+  8. Colorscheme Autoload ................ |packard-colorscheme|
+  9. Security Model ....................... |packard-security|
 
 ==============================================================================
-1. INTRODUCTION                                        *packard-intro*
+1. Introduction                              *packard-introduction*
 
-packard.nvim is a security-first Neovim plugin manager built on top of
-|vim.pack| (Neovim >= 0.12). It protects against supply chain attacks by
-enforcing a configurable cooldown period on new commits and requiring manual
-user review before any plugin is updated.
+packard.nvim is a security-first Neovim plugin manager built on the native
+|vim.pack| module (Neovim 0.12+).  It protects against supply chain attacks
+by enforcing a configurable cooldown period on new commits and requiring
+manual user review before any plugin is updated.
 
-Key features:
-  - Eager loading: all plugins load immediately on startup
-  - Commit pinning: everything is pinned to a specific SHA
-  - Version constraints: semver range support (`version = "1.*"`)
-  - Spec merging: combine fragmented plugin specs from multiple files
-  - Cooldown queue: new commits held for a configurable period (default 30d)
-  - Manual review: approve or reject updates after inspecting changes
-  - AI review engine: optional inline AI analysis of diffs
-  - Dependency resolution: automatic recursive dependency injection
-  - Parallel fetch: non-blocking `git fetch` for update checking
-  - Dashboard: tabbed UI for plugin management
-  - Zero external dependencies: self-contained and minimal
+packard uses a commit-pinning model (via `nvim-pack-lock.json`) and features
+parallel git fetch, inline AI diff review, semver version constraints, and a
+lazy.nvim-style dashboard.
 
-==============================================================================
-2. REQUIREMENTS                                    *packard-requirements*
-
+Requirements ~
   - Neovim >= 0.12.0
-  - `git` in PATH
-  - `curl` in PATH (for AI review feature only)
+  - `git` and `curl` in your PATH
 
 ==============================================================================
-3. SETUP                                                  *packard-setup*
+2. Setup                                        *packard-setup*
 
-packard.setup({opts})                           *packard.setup()*
-
-  The single entry point, called from your |init.lua|.
-
-  Fields in `opts`:~
-
-  ┌─────────────────────┬─────────┬──────────┬─────────────────────────────────┐
-  │ Field               │ Type    │ Default  │ Description                     │
-  ├─────────────────────┼─────────┼──────────┼─────────────────────────────────┤
-  │ plugins             │ table   │ nil      │ Array of plugin specs           │
-  │ defaults            │ table   │ {}       │ Global defaults (see below)     │
-  │ specs_dir           │ string  │ nil      │ Path to directory of .lua       │
-  │                     │         │          │ spec files                      │
-  │ ai_review           │ table   │ nil      │ AI review configuration         │
-  │ highlights          │ table   │ nil      │ Custom highlight group overrides│
-  │ debug               │ boolean │ false    │ Enable verbose loading          │
-  │                     │         │          │ tracing to |:messages|          │
-  │ notifications       │ boolean │ true     │ Show startup notification when  │
-  │                     │         │          │ plugins are ready for review    │
-  │ self_management     │ boolean │ true     │ Auto-include packard.nvim in    │
-  │                     │         │          │ the plugin list                 │
-  └─────────────────────┴─────────┴──────────┴─────────────────────────────────┘
-
-  `defaults` sub-fields:~
-
-  ┌─────────────────────┬─────────┬──────────┬─────────────────────────────────┐
-  │ Field               │ Type    │ Default  │ Description                     │
-  ├─────────────────────┼─────────┼──────────┼─────────────────────────────────┤
-  │ minimum_release_age │ number  │ 30       │ Global cooldown in days.        │
-  │                     │         │          │ Set to 0 to disable.            │
-  └─────────────────────┴─────────┴──────────┴─────────────────────────────────┘
-
-  `ai_review` sub-fields:~
-                                                             |packard-ai|
-  ┌─────────────────────┬─────────┬──────────┬─────────────────────────────────┐
-  │ Field               │ Type    │ Default  │ Description                     │
-  ├─────────────────────┼─────────┼──────────┼─────────────────────────────────┤
-  │ provider            │ string  │ required │ "openai", "anthropic",          │
-  │                     │         │          │ "ollama", or "custom"           │
-  │ model               │ string  │ varies   │ LLM model identifier            │
-  │ url                 │ string  │ varies   │ API endpoint URL                │
-  │ headers             │ table   │ {}       │ HTTP headers (Auth, etc.)       │
-  │ diff_warn_kb        │ number  │ 50       │ Warn threshold for diff size    │
-  │ diff_error_kb       │ number  │ 200      │ Error threshold for diff size   │
-  └─────────────────────┴─────────┴──────────┴─────────────────────────────────┘
-
-  Example: >
-    require("packard").setup({
-      defaults = { minimum_release_age = 30 },
-      plugins = {
-        "neovim/nvim-lspconfig",
-        { "tpope/vim-fugitive", cmd = "Git" },
-      },
-      specs_dir = "lua/plugins",
-      debug = true,
-      notifications = true,
-      self_management = true,
-      ai_review = {
-        provider = "openai",
-        model = "gpt-4o",
-        url = "https://api.openai.com/v1/chat/completions",
-        headers = {
-          ["Authorization"] = "Bearer " .. (os.getenv("OPENAI_API_KEY") or ""),
-        },
-      },
-    })
+>lua
+  require("packard").setup({
+    defaults = { minimum_release_age = 30 },
+    plugins = {
+      "neovim/nvim-lspconfig",
+      { "tpope/vim-fugitive", cmd = "Git" },
+    },
+    -- specs_dir = "lua/plugins",   -- alternative: directory-based specs
+    -- debug = true,                 -- verbose logging via :messages
+    -- notifications = true,         -- notify on eligible reviews
+    -- self_management = true,       -- packard manages itself (default)
+    -- highlights = {},              -- custom highlight overrides
+    -- ai_review = {},               -- optional AI review config
+  })
 <
-==============================================================================
-4. PLUGIN SPEC                                            *packard-spec*
 
-Each plugin entry in `plugins` can be a string or a table.
+Options ~
 
-String form: >
-  "owner/repo"
-<
-  Equivalent to `{ "owner/repo" }`. Always resolves to github.com.
+  defaults ~
+    Table of global defaults applied to all plugins:
+      minimum_release_age    Number, cooldown in days (default 30).  Set to 0
+                             to disable cooldown for all plugins.
 
-Table form: >
-  { "owner/repo", field = value, ... }
-<
-  The first element (`[1]`) must be the "owner/repo" source, OR the `dir`
-  field must be set for local plugins. They are mutually exclusive.
+  plugins ~
+    Array of plugin specs (see |packard-spec|).  Each entry is a string
+    `"owner/repo"` or a table `{ "owner/repo", ... }`.
 
-------------------------------------------------------------------------------
-4.1 Source Fields                                  *packard-spec-source*
+  specs_dir ~
+    String, path to a directory of `.lua` spec files.  Relative paths
+    resolve against `stdpath('config')`.  Files are loaded via |loadfile()|,
+    merged with the inline `plugins` array.  See |packard-spec-file|.
 
-  ┌──────────┬──────────┬──────────┬───────────────────────────────────────────┐
-  │ Field    │ Type     │ Required │ Description                               │
-  ├──────────┼──────────┼──────────┼───────────────────────────────────────────┤
-  │ [1]      │ string   │ no(*)    │ "owner/repo" — remote plugin source       │
-  │ dir      │ string   │ no(*)    │ Local filesystem path (no git remote)     │
-  │ name     │ string   │ no       │ Override auto-derived plugin name         │
-  └──────────┴──────────┴──────────┴───────────────────────────────────────────┘
-  (*) At least one of [1] or dir must be provided.
+  debug ~
+    Boolean, enables verbose tracing to `:messages`.
 
-  `dir` supports local plugins directly: >
-    { dir = "~/projects/my-plugin.nvim" }
-<
-  Local plugins:
-  - Must already exist on disk (no clone/fetch/checkout)
-  - Skip all git operations and cooldown queue
-  - Support eager registration of keymaps and commands
-  - Support `build` steps (run in the local directory)
-  - Support dependencies on remote (managed) plugins
+  notifications ~
+    Boolean, when true (default) shows a startup notification if any plugins
+    are eligible for review.
 
-  If both `[1]` and `dir` are provided, packard raises an error.
+  self_management ~
+    Boolean, when true (default) prepends `"ruicsh/packard.nvim"` to the
+    plugin list so packard manages its own updates.  Set to false to manage
+    packard manually.
 
-------------------------------------------------------------------------------
-4.2 Eager Registration Fields                        *packard-spec-eager*
+  highlights ~
+    Table of highlight group overrides (see |packard-highlights|).
 
-  ┌─────────────────┬──────────────┬───────────────────────────────────────────┐
-  │ Field           │ Type         │ Description                               │
-  ├─────────────────┼──────────────┼───────────────────────────────────────────┤
-  │ keys            │ string,      │ Register keymap(s) immediately at startup.│
-  │                 │ string[],    │ Supports strings, full mapping tables     │
-  │                 │ table,       │ `{lhs, rhs, ...}`, or functions returning │
-  │                 │ function     │ key specs. "First-wins" skipping for      │
-  │                 │              │ conflicts.                                │
-  │ cmd             │ string,      │ Register |:command|(s) immediately at     │
-  │                 │ string[]     │ startup. "First-wins" skipping.           │
-  └─────────────────┴──────────────┴───────────────────────────────────────────┘
-
-  Example: >
-    { "folke/snacks.nvim",
-      keys = {
-        { "<leader><space>", function() Snacks.picker.smart() end,
-          desc = "Files" },
-      },
-    }
-<
-  If `keys` is a function that needs to `require()` the plugin's Lua module: >
-    { "assistcontrol/readline.nvim",
-      keys = function()
-        local r = require("readline") -- resolves at startup
-        return {
-          { "<a-b>", r.backward_word, desc = "Jump word", mode = { "i", "c" } },
-        }
-      end,
-    }
-<
-------------------------------------------------------------------------------
-4.3 Setup Fields                                      *packard-spec-setup*
-
-  ┌──────────┬──────────────────┬──────────────────────────────────────────────┐
-  │ Field    │ Type             │ Description                                  │
-  ├──────────┼──────────────────┼──────────────────────────────────────────────┤
-  │ config   │ function,        │ Called after plugin loads:                   │
-  │          │ boolean          │ `function(plugin, opts)`.                    │
-  │          │                  │ `true` auto-calls `require(MAIN).setup()`.   │
-  │ opts     │ table, function  │ Options passed to `config`. If `config` is   │
-  │          │                  │ absent but `opts` is present, auto-invokes   │
-  │          │                  │ `require(MAIN).setup(opts)`.  Can be a       │
-  │          │                  │ function returning a table.                  │
-  │ main     │ string           │ Override auto-detected Lua module name for   │
-  │          │                  │ `config`/`opts` auto-setup. Useful when      │
-  │          │                  │ the module name doesn't match the repo.      │
-  │ init     │ function         │ Called at startup before plugin loads:       │
-  │          │                  │ `function(plugin)`.                          │
-  │ priority │ number           │ Load order (lower = earlier).                │
-  └──────────┴──────────────────┴──────────────────────────────────────────────┘
-
-  For zero-config plugins: >
-    { "folke/todo-comments.nvim", config = true }
-<
-  With `main` override: >
-    { "some-org/plugin-with-unusual-name",
-      main = "actual-module-name",
-      opts = { setting = "value" },
-    }
-<
-------------------------------------------------------------------------------
-4.4 Version Fields                                  *packard-spec-version*
-
-  Priority: `commit` > `tag` > `version` > `branch` > default branch HEAD.
-
-  ┌──────────┬──────────┬──────────────────────────────────────────────────────┐
-  │ Field    │ Type     │ Description                                          │
-  ├──────────┼──────────┼──────────────────────────────────────────────────────┤
-  │ commit   │ string   │ Exact commit SHA (40 hex chars). Highest priority.   │
-  │ tag      │ string   │ Exact tag pin (e.g. "v1.9.2").                       │
-  │ version  │ string   │ Semver range (e.g. "1.*", "^2.0", "~1.2.3").         │
-  │          │          │ Resolves to latest matching git tag. Pre-release     │
-  │          │          │ tags excluded unless range starts with pre-release.  │
-  │ branch   │ string   │ Track a specific branch (rolling).                   │
-  └──────────┴──────────┴──────────────────────────────────────────────────────┘
-
-------------------------------------------------------------------------------
-4.5 Build Field                                        *packard-spec-build*
-
-  Post-install/update build step:
-
-  ┌──────────┬──────────────────────┬──────────────────────────────────────────┐
-  │ Type     │ Example              │ Description                              │
-  ├──────────┼──────────────────────┼──────────────────────────────────────────┤
-  │ function │ `build = function(  │ Lua function called with the plugin table │
-  │          │   p) ... end`        │                                          │
-  │ :Command │ `build = ":TSUpdate"` │ Neovim command via `vim.cmd`            │
-  │ *.lua    │ `build = "build.lua"` │ Lua file loaded from plugin directory   │
-  │ string   │ `build = "make"`     │ Shell command via `vim.system()`         │
-  │ list     │ `build = { "make",`  │ Multiple steps run sequentially          │
-  │          │   ":TSUpdate" }`     │                                          │
-  │ auto     │ (omitted)            │ Uses `build.lua` or `build/init.lua` if  │
-  │          │                      │ present                                  │
-  │ false    │ `build = false`      │ Explicitly skip build step               │
-  └──────────┴──────────────────────┴──────────────────────────────────────────┘
-
-------------------------------------------------------------------------------
-4.6 Gate Fields                                        *packard-spec-gate*
-
-  ┌─────────────────────┬────────────────────┬─────────────────────────────────┐
-  │ Field               │ Type               │ Description                     │
-  ├─────────────────────┼────────────────────┼─────────────────────────────────┤
-  │ enabled             │ boolean, function  │ Exclude plugin from spec        │
-  │                     │                    │ entirely. `false` or            │
-  │                     │                    │ `fun():boolean` returning       │
-  │                     │                    │ `false` drops the plugin.       │
-  │ cond                │ boolean, function  │ Plugin installed but not        │
-  │                     │                    │ loaded. `fun(plugin):boolean`   │
-  │                     │                    │ or `fun(plugin):string`.        │
-  │                     │                    │ String return shown as          │
-  │                     │                    │ notification. Evaluated once    │
-  │                     │                    │ at setup().                     │
-  │ dependencies        │ string[], table[]  │ Auto-injected if not declared.  │
-  │                     │                    │ Topological sort ensures        │
-  │                     │                    │ deps load first.                │
-  │ minimum_release_age │ number             │ Per-plugin cooldown override    │
-  │                     │                    │ in days. Overrides global       │
-  │                     │                    │ default. `0` = disabled.        │
-  └─────────────────────┴────────────────────┴─────────────────────────────────┘
+  ai_review ~
+    Table with AI review configuration (see |packard-ai|).
 
 ==============================================================================
-5. DIRECTORY-BASED SPEC FILES                          *packard-specs-dir*
+3. Plugin Spec                                  *packard-spec*
 
-  Instead of declaring all plugins inline in `plugins`, you can organize them
-  across multiple `.lua` files using `specs_dir`:
+Each plugin entry is a string `"owner/repo"` or a table:
 
-  > require("packard").setup({
-  >   specs_dir = "lua/plugins",
-  > })
-  <
-
-  Behavior:
-  - Relative paths are resolved against |stdpath()| "config".
-  - Absolute paths used as-is.
-  - Packard scans the directory recursively (parent files first, then
-    subdirectories).
-  - Only `.lua` files are loaded (via |loadfile()|). Files starting with `_`
-    are skipped.
-  - Each spec file returns a plugin spec (string or table) or an array of specs.
-  - File specs are merged with the inline `plugins` array:
-    - `keys`, `cmd`, `opts`, and `dependencies` are deep-merged.
-    - Other fields: inline `plugins` wins over file specs.
-  - Error reporting is batched: all load errors and non-table return warnings
-    are collected and reported together after the scan.
-
-==============================================================================
-6. COLORSCHEME AUTO-LOAD                           *packard-colorscheme*
-
-  Colorscheme plugins work out of the box — no spec field required.
-
-  When you run |:colorscheme|, packard's `ColorSchemePre` autocmd scans each
-  unloaded plugin's install path for `colors/<name>.{lua,vim}` and loads the
-  first match. Built-in Neovim colorschemes are detected and short-circuit
-  immediately.
-
-  Main colorscheme (loaded at startup): >
-    { "folke/tokyonight.nvim",
-      priority = 1000,
-      opts = {},
-      config = function(_, opts)
-        require("tokyonight").setup(opts)
-        vim.cmd.colorscheme("tokyonight")
-      end,
-    }
+>lua
+  { "owner/repo",
+    -- spec fields (all optional)
+  }
 <
-  Lazy-loaded colorscheme (loaded on `:colorscheme`): >
-    { "catppuccin/nvim",
-      opts = {},
-    }
-    vim.cmd.colorscheme("catppuccin") -- triggers load
+
+Supported fields ~
+
+  name                String, override the plugin name derived from the repo.
+
+  dir                 String, use a local filesystem directory for the plugin.
+                      Mutually exclusive with an `"owner/repo"` source.
+                      The plugin must already exist on disk.
+
+  branch              String, git branch to track.  Default is the remote
+                      HEAD (discovered via `git ls-remote --symref`).
+
+  commit              String, exact commit SHA (40-char hex).  Highest
+                      priority pin.
+
+  tag                 String, exact git tag to pin.
+
+  version             String, semver range (e.g. `"1.*"`, `"^2.0"`,
+                      `"~1.2.3"`, `">=1.0"`).  Resolves to the latest
+                      matching git tag.  Pre-release tags (-beta, -rc) are
+                      excluded by default.
+
+  minimum_release_age Number, per-plugin cooldown override in days.
+                      Overrides `defaults.minimum_release_age`.
+
+  priority            Number, load order (higher = earlier).  Processed
+                      within the topological sort of dependencies.
+
+  enabled             Boolean or function returning boolean.  When false,
+                      the plugin is excluded entirely.
+
+  cond                Boolean or function returning boolean|string.
+                      When false the plugin is installed but NOT loaded.
+                      Use for conditional loading.
+
+  init                Function called at setup() before the plugin loads.
+                      Receives `(plugin)`.  Useful for `vim.g.*` setup.
+
+  config              Function or boolean.  Function: called after the
+                      plugin loads as `function(plugin, opts)`.  Boolean
+                      true: auto-calls `require(MAIN).setup(opts)`.
+
+  opts                Table or function returning table.  Options passed
+                      to the `config` function.  If `config` is absent
+                      but `opts` is present, `require(MAIN).setup(opts)`
+                      is called automatically.
+
+  main                String, override the auto-detected Lua module name
+                      used by `config`/`opts` auto-setup.
+
+  keys                String, string[], table, or function.  Keymaps
+                      registered immediately after the plugin loads.
+                      First-wins conflict handling: existing keymaps are
+                      never overwritten.
+
+  cmd                 String or string[].  User commands registered
+                      immediately after the plugin loads.
+
+  dependencies        String, string[], or table[].  Plugins required by
+                      this plugin.  Strings are parsed as specs; tables
+                      support the full spec format.
+
+  build               Function, string (":Command", "*.lua", or shell),
+                      string[], or false.  Post-install/update build step.
+                      Auto-detects `build.lua` / `build/init.lua`.
+
+  ai_review           Table, per-plugin AI config override.  See |packard-ai|.
+
+Pin priority:                        *packard-pin-priority*
+  commit > tag > version > branch > default branch HEAD
+
+Directory-based spec files:          *packard-spec-file*
+
+  Instead of declaring all plugins inline, organize them across `.lua` files:
+
+>lua
+  require("packard").setup({
+    specs_dir = "lua/plugins",
+  })
+<
+  Files are loaded via |loadfile()| (not |require()|) to avoid caching.
+  Parent directories are scanned before subdirectories.  Files starting
+  with `_` are skipped.  Each file returns a single spec or an array of
+  specs.
+
+  File specs and inline `plugins` are merged.  For duplicate `owner/repo`:
+  - keys, cmd, opts, dependencies are deep-merged
+  - Other fields: last occurrence (inline) wins
+
+Duplicate spec merging:               *packard-spec-merge*
+
+  When multiple specs for the same plugin are declared:
+  - keys: combined into a single list (wrapped in function if needed)
+  - opts: deep-merged (supports sub-module composition)
+  - cmd, dependencies: combined into a list
+  - Other fields: last occurrence wins
 
 ==============================================================================
-7. COMMANDS                                            *packard-commands*
+4. Commands                                  *packard-commands*
 
-  :Packard                                              *:Packard*
-    Open the dashboard to the Installed tab.
+                                                   *:Packard*
+  :Packard           Open the dashboard to the Installed tab.
 
-  :Packard check                                        *:Packard-check*
-    Run parallel update check: fetch all plugins, detect new commits,
-    register in cooldown queue. Non-blocking — editor stays responsive.
+                                                   *:Packard-check*
+  :Packard check     Run parallel update check: git fetch all plugins,
+                     detect new commits, register in cooldown queue.
+                     Echo summary with eligible/cooldown counts.
 
-  :Packard review                                       *:Packard-review*
-    Open dashboard to the Pending tab for review.
+                                                   *:Packard-review*
+  :Packard review    Open the dashboard to the Pending tab.
 
-  :Packard summary                                      *:Packard-summary*
-    Open dashboard to the Summary (history) tab.
+                                                   *:Packard-summary*
+  :Packard summary   Open the dashboard to the Summary tab (update history).
 
-  :Packard clean                                        *:Packard-clean*
-    Open dashboard to the Clean tab for orphan detection.
+                                                   *:Packard-clean*
+  :Packard clean     Open the dashboard to the Clean tab for orphan
+                     management (uninstalled plugin directories and stale
+                     state metadata).
 
-  :Packard build [name]                                 *:Packard-build*
-    Rebuild a specific plugin (by name or owner/repo), or all plugins that
-    have build steps when no argument is given.
+                                                   *:Packard-build*
+  :Packard build [name]
+                     Rebuild a plugin with a build step.  If no name is
+                     given, rebuild all plugins with build steps.
 
-  :Packard help                                         *:Packard-help*
-    Open dashboard to the Help tab showing keybindings.
+                                                   *:Packard-help*
+  :Packard help      Open the dashboard to the Help tab showing all
+                     keybindings.
 
-  :checkhealth packard                           *:checkhealth-packard*
-    Structured health report: configuration, lockfile, pending queue,
-    network status, plugin directory consistency.
-
-==============================================================================
-8. DASHBOARD                                          *packard-dashboard*
-
-  A floating window (80% x 80% centered) with tabbed navigation.
-
-------------------------------------------------------------------------------
-8.1 Tab Layouts                                  *packard-dashboard-tabs*
-
-  Six tabs: Installed, Update, Pending, Summary, Clean, Help.
-
-  Installed tab:~
-    Lists all plugins with status, commit SHA, branch, and cooldown. Shows
-    `✓✓` (installed + lockfile matching), `✓` (installed, not tracked),
-    `⚠` (anomaly). Dependencies show `[dep]`, conditionally-loaded plugins
-    show `[cond]`.
-
-  Update tab:~
-    Shows update check status: idle, running (with progress bar), done
-    (eligible/cooldown breakdown), or no results/error.
-
-  Pending tab:~
-    Lists queued updates with cooldown status: "Eligible now" (green) or
-    "N days remaining" (yellow). Shows "same" indicator when pending commit
-    equals installed (synced from another machine).
-
-  Summary tab:~
-    History of approved updates grouped by plugin, newest first, capped
-    at 10 per plugin.
-
-  Clean tab:~
-    Shows orphaned plugins (directories in `site/pack/core/opt/` not in
-    your spec) and stale state metadata. Toggle selection with `<Space>`
-    or `x`, remove with `X`.
-
-  Help tab:~
-    Sectioned layout listing all keybindings and their actions.
-
-------------------------------------------------------------------------------
-8.2 Keybindings                                    *packard-dashboard-keys*
-
-  Navigation:~
-    j / k ........................ Move cursor down / up
-    I .............................. Switch to Installed tab
-    P .............................. Switch to Pending tab
-    S .............................. Switch to Summary tab
-    C .............................. Switch to Clean tab
-    ? .............................. Show help overlay
-
-  Actions:~
-    U .............................. Run update check (switches to Update tab)
-    A .............................. Approve pending update (with confirmation)
-    X .............................. Reject pending / Clean selected orphans
-    B .............................. Rebuild plugin under cursor
-    <Space> / x ................... Toggle selection (Clean tab)
-
-  Review:~
-    <CR> ........................... View commit log inline
-    gx ............................. Open forge compare URL in browser
-    r .............................. Toggle AI review inline
-    R .............................. Force re-run AI review (bypass cache)
-
-  Window:~
-    q / <Esc> ..................... Close dashboard
+                                                   *:checkhealth-packard*
+  :checkhealth packard
+                     Report packard health: config, lockfile, pending
+                     queue, AI config, network, plugin directories.
 
 ==============================================================================
-9. SECURITY MODEL                                      *packard-security*
+5. Dashboard Keybindings                      *packard-dashboard*
 
-  packard's security model enforces a multi-step review process:
+The dashboard shows 6 tabbed views.  Keybindings apply buffer-locally:
 
-  1. Discovery ~
+  Key               Action
+  I                 Switch to Installed tab
+  U                 Run update check and switch to Update tab
+  P                 Switch to Pending tab
+  S                 Switch to Summary tab
+  C                 Switch to Clean tab
+  ?                 Switch to Help tab
+
+  j / k             Move cursor up / down
+  <CR>              Show commit log inline (Installed/Pending tabs)
+  <Space> / x       Toggle selection (Clean tab)
+
+  a                 Approve pending update (Pending tab, eligible only)
+  A                 Force approve (override cooldown)
+  X                 Reject pending / Clean selected orphans
+
+  gx                Open forge compare URL in browser (Pending tab)
+  r                 Toggle AI review inline (Pending tab)
+  R                 Force re-run AI review (bypass cache)
+
+  B                 Rebuild plugin under cursor
+
+  q / <Esc>         Close dashboard
+
+==============================================================================
+6. Highlight Groups                           *packard-highlights*
+
+All highlight groups are defined with `default = true` so your colorscheme
+can override them.  Override via the `highlights` option in |packard-setup|:
+
+>lua
+  require("packard").setup({
+    highlights = {
+      PackardHeader = { link = "Title" },
+      PackardEligible = { link = "DiagnosticOk" },
+    },
+  })
+<
+
+Groups ~
+
+  Group                           Default Link               Usage
+  PackardButton                   CursorLine                 Tab pill (inactive)
+  PackardButtonActive             Visual                     Tab pill (active)
+  PackardKeyHint                  @punctuation.special       Tab shortcut key
+
+  PackardH2                       Comment                    Section header
+  PackardComment                  Comment                    Subtle text
+
+  PackardPluginName               Normal                     Plugin owner/repo
+  PackardPluginNameSelected       Visual                     Plugin name (selected)
+  PackardRowSelected              Visual                     Selected row background
+
+  PackardCommitHash               Identifier                 Commit SHA
+  PackardCommitAge                (none)                     Commit age text
+
+  PackardEligible                 Normal                     Eligible badge / status
+  PackardCooldown                 Normal                     Cooldown status
+
+  PackardAIRiskLow                DiagnosticInfo             AI risk: low
+  PackardAIRiskMedium             DiagnosticWarn             AI risk: medium
+  PackardAIRiskHigh               DiagnosticError            AI risk: high
+  PackardAIValue                  (none)                     AI field value text
+
+  PackardStatusWarn               DiagnosticWarn             Warning / fallback status
+
+  PackardProgressDone             Normal                     Progress bar done
+  PackardProgressTodo             Normal                     Progress bar remaining
+
+  PackardHelpSection              Title                      Help section title
+  PackardHelpKey                  Special                    Help keybinding key
+  PackardHelpDesc                 Comment                    Help keybinding description
+  PackardHelpIntro                Comment                    Help intro text
+
+==============================================================================
+7. AI Review                                    *packard-ai*
+
+packard can optionally review plugin diffs using an LLM provider for
+security risk analysis and breaking change detection.
+
+Configuration ~
+
+Add an `ai_review` table to |packard-setup|:
+
+>lua
+  ai_review = {
+    provider = "openai",               -- "openai", "anthropic", "ollama", "custom"
+    model = "gpt-4o",                  -- model identifier
+    url = "https://api.openai.com/v1/chat/completions",  -- endpoint (optional, has defaults)
+    headers = {
+      ["Authorization"] = "Bearer " .. (os.getenv("OPENAI_API_KEY") or ""),
+    },
+    diff_warn_kb = 50,                 -- warn before sending diffs > 50 KB
+    diff_error_kb = 200,               -- block diffs > 200 KB
+  }
+<
+
+Provider default URLs ~
+
+  Provider       Default URL
+  openai         https://api.openai.com/v1/chat/completions
+  anthropic      https://api.anthropic.com/v1/messages
+  ollama         http://localhost:11434/api/chat
+  custom         (required — no default)
+
+Set `url` to override the default (useful for OpenAI-compatible proxies,
+local endpoints, or custom gateways).
+
+Trigger in the dashboard ~
+
+  r   Toggle AI review on the current pending row
+  R   Force re-run AI review (bypass the local cache)
+
+Results are cached in `stdpath('state')/packard-ai-cache.json` by
+`owner_repo:from_sha:to_sha` key.
+
+==============================================================================
+8. Colorscheme Autoload                      *packard-colorscheme*
+
+ADR-011: packard registers a `ColorSchemePre` autocmd during setup to
+auto-load colorscheme plugins on demand.
+
+When an unloaded (|cond| = false) plugin ships a colorscheme file at
+`colors/<name>.{lua,vim}`, running `:colorscheme <name>` triggers packard
+to load the plugin — including its `init()` hook, `config()`, keys, and
+commands — before Neovim applies the scheme.
+
+No spec field is required.  Any plugin with a `colors/` directory is
+eligible.  Built-in Neovim colorschemes are short-circuited via
+|getcompletion()|.
+
+Use `cond = false` on colorscheme plugins you want installed but not
+loaded until you switch to them:
+
+>lua
+  {
+    "catppuccin/nvim",
+    cond = false,
+    opts = { flavour = "mocha" },
+  }
+<
+`:colorscheme catppuccin` will auto-load the plugin, run its setup, and
+apply the scheme.
+
+==============================================================================
+9. Security Model                            *packard-security*
+
+packard protects against supply chain attacks through a multi-gate workflow:
+
+  1. Discovery
      `:Packard check` fetches the latest HEAD for each plugin via parallel
-     `git fetch`. Only manual invocation triggers network operations — no
-     automatic timers or startup checks.
+     `git fetch`.  New commits are detected by comparing against the
+     installed SHA recorded in `nvim-pack-lock.json`.
 
-  2. Quarantine ~
-     New commits enter a Pending queue with a discovery timestamp. Only one
-     pending entry per plugin (newer supersedes older).
+  2. Quarantine
+     Each new commit enters a "Pending" queue with a discovery timestamp.
+     No code runs at this stage.
 
-  3. Cooldown ~
-     Commits are held in cooldown until `minimum_release_age` days have
-     passed since discovery. The default is 30 days; can be overridden
-     per-plugin or set to 0 to disable.
+  3. Cooldown (default 30 days)
+     Commits are held in "In Cooldown" until `minimum_release_age` days
+     have passed since discovery.  During this window, other users may
+     discover if the commit is compromised.
 
-  4. Audit ~
-     User reviews eligible changes by inspecting the commit log (`<CR>`),
-     opening a forge compare URL in the browser (`gx`), or running an
-     optional AI review (`r`/`R`).
+  4. Audit
+     The user reviews eligible changes via:
+     - `gx` to open a forge compare URL (GitHub, GitLab, Bitbucket) in the browser
+     - `r` to run an inline AI security analysis of the diff
+     - `<CR>` to view the local commit log
 
-  5. Action ~
-     User explicitly approves (updates the plugin) or rejects (permanently
-     blacklists the commit SHA). Blacklisted commits are never offered
-     again. No automatic update path exists.
+  5. Action
+     a   Approve: the commit is applied via `vim.pack.update()`
+     X   Reject (blacklist): the commit is permanently blocked
+     A   Force approve: bypass remaining cooldown
 
-  Additional protections:
-  - SSH URLs are rejected at parse time (HTTPS only, public repos only).
-  - Force-pushes are detected: if upstream SHA changes and is not a
-    descendant of the previous commit, it's marked as an anomaly.
-  - Dashboard and health report anomalies (missing directories, upstream
-    unreachable, force-pushes).
-  - AI review diffs are gated by size thresholds: warn at 50KB, block at
-    200KB, with user confirmation.
+Key security properties ~
 
-==============================================================================
-10. AI REVIEW                                              *packard-ai*
+  - No plugin code is updated without explicit user approval.
+  - SSH URLs are rejected at spec parse time — public repos only via HTTPS.
+  - AI diffs are sent to the configured provider; packard stores no API keys.
+  - packard manages itself through the same cooldown + review flow.
+  - The lockfile (`nvim-pack-lock.json`) lives in |stdpath-config| and is
+    naturally version-controlled with your dotfiles.
+  - Machine-local state (`packard-state.json`, `packard-ai-cache.json`)
+    lives in |stdpath-state| — not VCS tracked.
 
-  Optional AI-powered analysis of pending updates. Configured via the
-  `ai_review` table in |packard.setup()|. See |packard-setup| for available
-  fields.
-
-  Supported providers:
-  - `openai` — requires `url` and `Authorization` header
-  - `anthropic` — requires `url` and `x-api-key` header
-  - `ollama` — local endpoint (e.g. `http://localhost:11434/api/chat`)
-  - `custom` — flexible for JSON-based APIs
-
-  Results are cached locally in `stdpath('state')/packard-ai-cache.json` to
-  prevent redundant API calls. The cache is keyed by `owner/repo:from:to`.
-
-  In the dashboard, press `r` on a Pending row to trigger AI review
-  (non-blocking, inline expansion). Press `R` to bypass cache and force
-  re-run. Results show risk level (Low/Medium/High), summary, and reasoning.
-
-==============================================================================
-11. HIGHLIGHT GROUPS                                  *packard-highlights*
-
-  You can customize dashboard appearance by setting highlight groups in your
-  |init.lua| before calling |packard.setup()|, or via the `highlights` option: >
-
-    require("packard").setup({
-      highlights = {
-        PackardHeader = { link = "Title" },
-        PackardEligible = { link = "DiagnosticOk" },
-      },
-    })
-<
-  Available groups:
-
-  ┌──────────────────────────┬─────────────────────────────────────────────────┐
-  │ Group                    │ Default link                                    │
-  ├──────────────────────────┼─────────────────────────────────────────────────┤
-  │ PackardHeader            │ Normal                                          │
-  │ PackardH2                │ Comment                                         │
-  │ PackardComment           │ Comment                                         │
-  │ PackardButton            │ CursorLine                                      │
-  │ PackardButtonActive      │ Visual                                          │
-  │ PackardPluginName        │ Normal                                          │
-  │ PackardPluginNameSelected│ Visual                                          │
-  │ PackardRowSelected       │ Visual                                          │
-  │ PackardCommit            │ Normal                                          │
-  │ PackardCommitHash        │ Identifier                                      │
-  │ PackardCommitAge         │ (none)                                          │
-  │ PackardStatusOk          │ DiagnosticOk                                    │
-  │ PackardStatusWarn        │ DiagnosticWarn                                  │
-  │ PackardStatusError       │ DiagnosticError                                 │
-  │ PackardEligible          │ Normal                                          │
-  │ PackardCooldown          │ Normal                                          │
-  │ PackardKeyHint           │ @punctuation.special                            │
-  │ PackardDivider           │ Normal                                          │
-  │ PackardProgressDone      │ Normal                                          │
-  │ PackardProgressTodo      │ Normal                                          │
-  │ PackardAIRiskLow         │ DiagnosticInfo                                  │
-  │ PackardAIRiskMedium      │ DiagnosticWarn                                  │
-  │ PackardAIRiskHigh        │ DiagnosticError                                 │
-  │ PackardAIValue           │ (none)                                          │
-  │ PackardAIBorder          │ (none)                                          │
-  │ PackardHelpSection       │ Title                                           │
-  │ PackardHelpKey           │ Special                                         │
-  │ PackardHelpDesc          │ Comment                                         │
-  │ PackardHelpIntro         │ Comment                                         │
-  └──────────────────────────┴─────────────────────────────────────────────────┘
-
-==============================================================================
-12. DEVELOPER TOOLS                                      *packard-develop*
-
-  Debug mode:~
-    Setting `debug = true` in |packard.setup()| enables verbose loading
-    tracing sent to |:messages|. Includes keymap registration details,
-    plugin loading events, `package.path` prepending, and auto-setup
-    actions.
-
-  _diagnose helper:~
-    packard exposes `M._diagnose(name)` for interactive debugging. From
-    |command-line| mode, inspect a plugin's parsed state and stub mappings: >
-
-    :lua require("packard")._diagnose("readline")
-<
-    Returns a table with the plugin's normalized fields, `package.path`
-    inclusion status, and live mapping status.
-
-==============================================================================
-13. LICENSE                                              *packard-license*
-
-  packard.nvim is released under the MIT license. See the LICENSE file in
-  the repository root for full terms.
-
-==============================================================================
- vim:tw=78:ts=8:ft=help:norl:
+=======================================================================
+ vim:tw=78:ts=8:noet:ft=help:norl:

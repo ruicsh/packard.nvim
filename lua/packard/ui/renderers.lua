@@ -127,20 +127,24 @@ return function(UI)
       end
     end
 
+    -- Build a lookup table so we don't O(n*m) scan UI.plugins for each pending entry
+    local plugin_by_repo = {}
+    for _, p in ipairs(UI.plugins) do
+      plugin_by_repo[p.owner_repo] = p
+    end
+
     -- Default column widths; expand dynamically if content is wider
     local max_name_len = 26
     local all_pending = vim.tbl_extend("force", status.eligible, status.cooldown)
     for owner_repo, _ in pairs(all_pending) do
       local name_display = owner_repo
-      for _, p in ipairs(UI.plugins) do
-        if p.owner_repo == owner_repo then
-          if p.is_dependency then
-            name_display = name_display .. " [dep]"
-          end
-          if p._cond then
-            name_display = name_display .. " [cond]"
-          end
-          break
+      local p = plugin_by_repo[owner_repo]
+      if p then
+        if p.is_dependency then
+          name_display = name_display .. " [dep]"
+        end
+        if p._cond then
+          name_display = name_display .. " [cond]"
         end
       end
       max_name_len = math.max(max_name_len, vim.fn.strdisplaywidth(name_display))
@@ -160,14 +164,8 @@ return function(UI)
         local plugin_name = owner_repo:match("/([^/]+)$")
         local installed = Lockfile.get_installed_commit(plugin_name) or "???"
 
-        -- Find plugin to check is_dependency
-        local plugin
-        for _, p in ipairs(UI.plugins) do
-          if p.owner_repo == owner_repo then
-            plugin = p
-            break
-          end
-        end
+        -- Lookup plugin from the hash table built above
+        local plugin = plugin_by_repo[owner_repo]
 
         local name_display = owner_repo
         if plugin and plugin.is_dependency then
