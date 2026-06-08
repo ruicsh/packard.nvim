@@ -100,6 +100,9 @@ local function check_all(plugins, on_progress)
     if plugin.is_local then
       -- Local plugins have no remote to fetch; treat as up-to-date
       jobs[i] = { plugin = plugin, is_local = true }
+    elseif plugin.pin then
+      -- Pinned plugins are skipped during updates
+      jobs[i] = { plugin = plugin, is_pinned = true }
     else
       local plugin_path = Utils.get_plugin_path(plugin)
 
@@ -108,9 +111,12 @@ local function check_all(plugins, on_progress)
         -- Will be handled in the collection loop below
         jobs[i] = { plugin = plugin, missing = true }
       elseif plugin.version then
-        -- S1: For version-tracked plugins, we don't need to fetch a branch.
-        -- Tag resolution is handled via ls-remote --tags (tag_jobs).
-        jobs[i] = { plugin = plugin, no_fetch = true }
+        -- S1: For version-tracked plugins, we also need to fetch tags to ensure
+        -- git objects are present and for force-push checking.
+        local job = vim.system({ "git", "fetch", "--tags", "origin" }, {
+          cwd = plugin_path,
+        })
+        jobs[i] = { job = job, plugin = plugin, is_version = true }
       else
         -- T-1.1.4: Resolve default branch if not specified
         local branch = plugin.branch or resolved_branches[i] or "HEAD"
@@ -134,30 +140,45 @@ local function check_all(plugins, on_progress)
     if item.is_local then
       -- Local plugin: no remote to fetch, always up-to-date
       result.success = true
+    elseif item.is_pinned then
+      -- Pinned plugin: skip check, always up-to-date
+      result.success = true
     elseif item.missing then
       -- Plugin not installed on disk
       result.error = "not installed"
-    elseif item.no_fetch then
-      -- S1: Version-tracked plugin, already handled tags
-      if plugin.version and tag_jobs[i] then
-        local tag_obj = tag_jobs[i]:wait(5000)
-        if tag_obj.code == 0 then
-          local tags = Git.parse_ls_remote_tags(tag_obj.stdout)
-          local range = Semver.to_range(plugin.version)
-          local best = range and Semver.pick_best(tags, range) or nil
-          if best then
-            result.success = true
-            result.new_tag = best.tag
-            result.tag_sha = best.sha
+    elseif item.is_version then
+      -- S1: Version-tracked plugin, wait for fetch then resolve tags
+      local obj = item.job:wait()
+      if obj.code == 0 then
+        if plugin.version and tag_jobs[i] then
+          local tag_obj = tag_jobs[i]:wait(5000)
+          if tag_obj.code == 0 then
+            local tags = Git.parse_ls_remote_tags(tag_obj.stdout)
+            local range = Semver.to_range(plugin.version)
+            local best = range and Semver.pick_best(tags, range) or nil
+            if best then
+              result.success = true
+              result.new_tag = best.tag
+              result.tag_sha = best.sha
+              -- Check if force-push removed the installed commit from history
+              check_force_push(plugin, result)
+            else
+              result.error = "no matching version found"
+            end
           else
-            result.error = "no matching version found"
+            result.error = "git ls-remote --tags failed"
           end
         else
-          result.error = "git ls-remote --tags failed"
+          result.error = "internal error: no tag job for version-tracked plugin"
+          result.anomaly = true
         end
       else
-        result.error = "internal error: no tag job for version-tracked plugin"
-        result.anomaly = true
+        if obj.code == 128 then
+          result.error = "upstream unreachable or repo gone"
+          result.anomaly = true
+        else
+          result.error = "git fetch --tags failed with code " .. obj.code
+        end
       end
     else
       local obj = item.job:wait()
