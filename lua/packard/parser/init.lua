@@ -4,6 +4,50 @@ local Deps = require("packard.parser.deps")
 
 local Parser = {}
 
+-- Known valid spec fields for packard.
+local KNOWN_FIELDS = {
+  [1] = true,
+  branch = true,
+  tag = true,
+  commit = true,
+  version = true,
+  pin = true,
+  minimum_release_age = true,
+  priority = true,
+  config = true,
+  init = true,
+  main = true,
+  build = true,
+  name = true,
+  dir = true,
+  url = true,
+  enabled = true,
+  cond = true,
+  opts = true,
+  keys = true,
+  cmd = true,
+  dependencies = true,
+  data = true,
+  ai_review = true,
+}
+
+-- Known lazy.nvim spec fields that packard explicitly does not support.
+-- Maps field name to a user-facing message explaining why.
+local KNOWN_UNSUPPORTED = {
+  event = "lazy-loading on events is not supported; packard loads all plugins eagerly",
+  ft = "lazy-loading on file types is not supported; packard loads all plugins eagerly",
+  lazy = "lazy-loading is not supported; packard loads all plugins eagerly",
+  dev = "the dev field is not supported; use dir for local development",
+  import = "per-plugin import is not supported; use specs_dir for global spec loading",
+  optional = "optional plugins are not supported",
+  specs = "nested specs are not supported",
+  module = "module loading control is not supported",
+  submodules = "submodule control is not supported; all submodules are fetched",
+}
+
+-- Deduplicate field warnings so each unsupported field is warned once per session.
+local warned_fields = {}
+
 ---@class NormalizedPlugin
 ---@field owner_repo string
 ---@field name string
@@ -208,6 +252,22 @@ function Parser.parse_all(plugins, defaults)
       depended_by = {},
       spec = spec,
     }
+
+    -- Warn about unsupported spec fields (once per field name per session)
+    for key, _ in pairs(spec) do
+      if not KNOWN_FIELDS[key] and not warned_fields[key] then
+        warned_fields[key] = true
+        local msg = KNOWN_UNSUPPORTED[key]
+        if msg then
+          vim.notify(string.format("packard: '%s' for '%s': %s", key, owner_repo, msg), vim.log.levels.WARN)
+        else
+          vim.notify(
+            string.format("packard: unrecognized spec field '%s' in '%s'", key, owner_repo),
+            vim.log.levels.WARN
+          )
+        end
+      end
+    end
 
     seen[owner_repo] = plugin
     table.insert(normalized, plugin)

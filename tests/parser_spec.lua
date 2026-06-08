@@ -503,6 +503,53 @@ local function test_spec_merging()
   assert(init_calls == 10)
 end
 
+local function test_unsupported_fields()
+  print("Testing unsupported field warnings...")
+
+  -- Capture notifications
+  local notify_messages = {}
+  local original_notify = vim.notify
+  --[[@diagnostic disable-next-line: duplicate-set-field]]
+  vim.notify = function(msg)
+    table.insert(notify_messages, msg)
+  end
+
+  packard.setup({
+    self_management = false,
+    plugins = {
+      { "user/with-event", event = "BufRead", keys = { "j" } },
+      { "user/with-ft", ft = "markdown", cmd = "TestCmd" },
+      { "user/with-lazy", lazy = true },
+      { "user/valid", config = true },
+    },
+  })
+  assert(#packard.plugins == 4, "unsupported fields should not prevent parsing")
+
+  -- Check that warnings were emitted for event, ft, lazy (once each)
+  local warned_about = {}
+  for _, msg in ipairs(notify_messages) do
+    if msg:match("packard: 'event'") then
+      warned_about.event = true
+    elseif msg:match("packard: 'ft'") then
+      warned_about.ft = true
+    elseif msg:match("packard: 'lazy'") then
+      warned_about.lazy = true
+    end
+  end
+  assert(warned_about.event, "expected warning for 'event' field")
+  assert(warned_about.ft, "expected warning for 'ft' field")
+  assert(warned_about.lazy, "expected warning for 'lazy' field")
+
+  -- Valid fields should produce no warnings about themselves
+  for _, msg in ipairs(notify_messages) do
+    assert(not msg:match("packard:.*'config'"), "should not warn about valid field 'config'")
+    assert(not msg:match("packard:.*'keys'"), "should not warn about valid field 'keys'")
+    assert(not msg:match("packard:.*'cmd'"), "should not warn about valid field 'cmd'")
+  end
+
+  vim.notify = original_notify
+end
+
 test_normalization()
 
 test_defaults_and_overrides()
@@ -520,5 +567,7 @@ test_dir_missing_source_and_dir()
 test_dir_empty_string_error()
 test_dir_non_string_error()
 test_spec_merging()
+
+test_unsupported_fields()
 
 print("Parser tests passed!")
