@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Neovim
+        uses: thinca/action-setup-neovim@v2
+        with:
+          neovim-version: stable
+
+      - name: Install lua-language-server
+        uses: lunarmodules/lua-language-server@v3
+        with:
+          version: 3.9.1
+
+      - name: Install stylua
+        uses: JohnnyMorganz/stylua-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        run: make test
+
+      - name: Check formatting (stylua)
+        run: make format
