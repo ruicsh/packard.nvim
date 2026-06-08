@@ -3,6 +3,8 @@
 > [!NOTE]
 > **Beta**: Core features are complete and tested. APIs are stable but may receive minor refinements before v1.0.
 
+> Built entirely on Neovim's native `vim.pack` primitives — no external package managers or runtimes.
+
 A security-first Neovim plugin manager that protects against supply chain attacks by enforcing a configurable cooldown period on new commits and requiring manual user review before any plugin is updated.
 
 ## Features
