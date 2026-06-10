@@ -2,6 +2,35 @@
 -- Runs all tests in a single Neovim process.
 -- Used by CI (especially on Windows) where bash loops are less convenient.
 
+-- Snapshot commonly-mocked globals before a test file and restore them
+-- after (even on failure) to prevent mock leakage between files.
+-- This list covers all globals that *_spec.lua files currently mock.
+local function snapshot_globals()
+  return {
+    io_open = io.open,
+    os_rename = os.rename,
+    os_remove = os.remove,
+    vim_system = vim.system,
+    vim_pack = vim.pack,
+    vim_fn_filereadable = vim.fn.filereadable,
+    vim_fn_isdirectory = vim.fn.isdirectory,
+    vim_fn_mkdir = vim.fn.mkdir,
+    vim_fn_confirm = vim.fn.confirm,
+  }
+end
+
+local function restore_globals(snap)
+  io.open = snap.io_open
+  os.rename = snap.os_rename
+  os.remove = snap.os_remove
+  vim.system = snap.vim_system
+  vim.pack = snap.vim_pack
+  vim.fn.filereadable = snap.vim_fn_filereadable
+  vim.fn.isdirectory = snap.vim_fn_isdirectory
+  vim.fn.mkdir = snap.vim_fn_mkdir
+  vim.fn.confirm = snap.vim_fn_confirm
+end
+
 local function run_all()
   local tests_dir = "tests"
   local files = {}
@@ -47,8 +76,14 @@ local function run_all()
       end
     end
 
+    -- Snapshot globals before the test so we can restore them even on failure
+    local snap = snapshot_globals()
+
     -- Run the test file
     local ok, err = pcall(dofile, file)
+
+    -- Always restore globals — prevents mock leakage into subsequent tests
+    restore_globals(snap)
 
     if not ok then
       print("\nFAILED: " .. file)

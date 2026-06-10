@@ -26,6 +26,16 @@ io.open = function(path, mode)
   return original_io_open(path, mode)
 end
 
+-- Mock os.rename to stay within mock_files (State.write() uses the
+-- temp → final atomic rename pattern, which fails on Windows when
+-- the temp file only exists in mock_files, not on the real filesystem).
+local original_rename = os.rename
+os.rename = function(old, new)
+  mock_files[new] = mock_files[old]
+  mock_files[old] = nil
+  return true
+end
+
 local original_filereadable = vim.fn.filereadable
 vim.fn.filereadable = function(path)
   return mock_files[path] and 1 or 0
@@ -237,6 +247,7 @@ Helpers.describe("Self-management update flow", function()
 end)
 
 -- Restore global mocks
+os.rename = original_rename
 io.open = original_io_open
 vim.fn.filereadable = original_filereadable
 vim.fn.mkdir = original_mkdir
