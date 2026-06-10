@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/ruicsh/packard.nvim/compare/v0.3.1...v0.4.0) (2026-06-10)
+
+
+### Features
+
+* **packard:** prompt restart after self-update to activate new code ([8cf2aa9](https://github.com/ruicsh/packard.nvim/commit/8cf2aa9814e4994c6db0175f0ab88b6f04752eb8))
+
+
+### Bug Fixes
+
+* align bootstrap path with managed path to fix self-update ([343d699](https://github.com/ruicsh/packard.nvim/commit/343d69900ecc5c757a17e2be3988063e94a40e4d))
+
 ## [0.3.1](https://github.com/ruicsh/packard.nvim/compare/v0.3.0...v0.3.1) (2026-06-10)
 
 
