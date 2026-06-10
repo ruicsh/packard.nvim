@@ -76,6 +76,9 @@ Options ~
     plugin list so packard manages its own updates.  Set to false to manage
     packard manually.
 
+    When packard updates itself, it prompts you to restart Neovim using
+    |:restart| so the new version takes effect.
+
   highlights ~
     Table of highlight group overrides (see |packard-highlights|).
 

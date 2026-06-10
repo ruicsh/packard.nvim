@@ -87,6 +87,8 @@ require("packard").setup({
 
 By default, packard automatically prepends `"ruicsh/packard.nvim"` to your plugin list so it manages its own updates through the same cooldown + manual review flow as every other plugin — no privileged backdoor. Set `self_management = false` to disable this and manage packard manually (e.g., `git pull` in the plugin directory). If you declare `"ruicsh/packard.nvim"` explicitly in your `plugins` table, auto-injection is automatically skipped in favor of your spec.
 
+When packard updates itself, it prompts you to restart Neovim using the built-in `:restart` command so the new version takes effect immediately.
+
 ## Eager Loading and Spec Fields
 
 Packard eagerly loads all enabled plugins at startup (or on manual `:packadd`). It supports several `lazy.nvim`-style spec fields to configure plugin setup:

@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Self-update Restart**: Approving an update for packard.nvim now prompts to restart Neovim via `:restart` (added in Neovim 0.12) so the new code takes effect immediately.
+
 ## [0.3.0] - 2026-06-08
 
 ### Added

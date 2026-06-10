@@ -170,10 +170,15 @@ Helpers.describe("Self-management update flow", function()
     local UI = require("packard.ui")
     UI.open(packard.plugins, "pending")
 
-    -- Mock vim.fn.confirm to return 1 (Yes)
+    -- Mock vim.fn.confirm to return 1 (Yes) for approval, 2 (Later) for restart
+    local confirm_calls = {}
     local original_confirm = vim.fn.confirm
-    vim.fn.confirm = function()
-      return 1
+    vim.fn.confirm = function(msg)
+      table.insert(confirm_calls, msg)
+      if msg:match("Restart Neovim") then
+        return 2 -- Later
+      end
+      return 1 -- Yes
     end
 
     UI._do_render()
@@ -214,6 +219,16 @@ Helpers.describe("Self-management update flow", function()
     Helpers.expect(#state.update_log["ruicsh/packard.nvim"]).to_be(1)
     Helpers.expect(state.update_log["ruicsh/packard.nvim"][1].from).to_be("old-sha")
     Helpers.expect(state.update_log["ruicsh/packard.nvim"][1].to).to_be("sha-new")
+
+    -- 9. Verify restart prompt was shown
+    local saw_restart = false
+    for _, msg in ipairs(confirm_calls) do
+      if msg:match("Restart Neovim") then
+        saw_restart = true
+        break
+      end
+    end
+    Helpers.expect(saw_restart).to_be(true)
 
     -- Restore
     vim.fn.confirm = original_confirm
