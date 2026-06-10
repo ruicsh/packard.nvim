@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1](https://github.com/ruicsh/packard.nvim/compare/v0.4.0...v0.4.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* **tests:** make isdirectory mock platform-agnostic for self_update_spec ([630e80a](https://github.com/ruicsh/packard.nvim/commit/630e80a5443b69e87da42fbf996203213f4dcb6f))
+* **tests:** mock os.rename and guard globals for Windows CI ([7edd099](https://github.com/ruicsh/packard.nvim/commit/7edd099f7629f887daa55453b1de73d50cdd4ccb))
+
 ## [0.4.0](https://github.com/ruicsh/packard.nvim/compare/v0.3.1...v0.4.0) (2026-06-10)
 
 
