@@ -2,6 +2,28 @@
 -- Runs all tests in a single Neovim process.
 -- Used by CI (especially on Windows) where bash loops are less convenient.
 
+-- 0. Isolate environment
+-- We must set these BEFORE any requires that might call stdpath()
+local root = vim.uv.cwd()
+local test_dir = vim.fs.normalize(root .. "/.test_env_all")
+
+vim.fn.setenv("XDG_DATA_HOME", test_dir .. "/data")
+vim.fn.setenv("XDG_CONFIG_HOME", test_dir .. "/config")
+vim.fn.setenv("XDG_STATE_HOME", test_dir .. "/state")
+
+-- Recreate directories
+vim.fn.delete(test_dir, "rf")
+vim.fn.mkdir(test_dir .. "/data/nvim/site/pack/core/opt", "p")
+vim.fn.mkdir(test_dir .. "/config/nvim/lua/plugins", "p")
+vim.fn.mkdir(test_dir .. "/state/nvim", "p")
+
+-- Ensure cleanup on exit
+vim.api.nvim_create_autocmd("VimLeavePre", {
+  callback = function()
+    vim.fn.delete(test_dir, "rf")
+  end,
+})
+
 -- Snapshot commonly-mocked globals before a test file and restore them
 -- after (even on failure) to prevent mock leakage between files.
 -- This list covers all globals that *_spec.lua files currently mock.

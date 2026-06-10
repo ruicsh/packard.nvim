@@ -3,6 +3,20 @@
 
 set -e
 
+# Create an isolated test environment using XDG variables
+TEST_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'packard_tests')
+export XDG_DATA_HOME="$TEST_DIR/data"
+export XDG_CONFIG_HOME="$TEST_DIR/config"
+export XDG_STATE_HOME="$TEST_DIR/state"
+
+# Ensure directories exist
+mkdir -p "$XDG_DATA_HOME/nvim/site/pack/core/opt"
+mkdir -p "$XDG_CONFIG_HOME/nvim/lua/plugins"
+mkdir -p "$XDG_STATE_HOME/nvim"
+
+# Ensure cleanup on exit
+trap 'rm -rf "$TEST_DIR"' EXIT
+
 # Add current directory and lua/ to runtimepath so tests can find packard
 # We use --cmd to ensure rtp is set before any processing
 COMMAND="set rtp+=. | set rtp+=./lua"
