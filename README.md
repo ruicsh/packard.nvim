@@ -35,11 +35,11 @@ Add this to your `init.lua` before calling `setup`:
 
 ```lua
 -- Bootstrap packard.nvim
-local packpath = vim.fn.stdpath("data") .. "/site/pack/packard/start/packard.nvim"
+local packpath = vim.fn.stdpath("data") .. "/site/pack/core/opt/packard.nvim"
 if vim.fn.isdirectory(packpath) == 0 then
   vim.fn.system({ "git", "clone", "--filter=blob:none", "https://github.com/ruicsh/packard.nvim.git", packpath })
 end
-vim.opt.rtp:prepend(packpath)
+vim.cmd.packadd("packard.nvim")
 
 require("packard").setup({
   -- Global defaults applied to all plugins

@@ -4,7 +4,7 @@ local M = {}
 ---This snippet should be used in init.lua before require("packard").setup()
 ---It clones the plugin manager itself if it's missing.
 function M.init()
-  local packpath = vim.fn.stdpath("data") .. "/site/pack/packard/start/packard.nvim"
+  local packpath = vim.fn.stdpath("data") .. "/site/pack/core/opt/packard.nvim"
   if vim.fn.isdirectory(packpath) == 0 then
     -- If we are in the packard.nvim repo itself, we can just link it
     local current_dir = vim.fn.getcwd()
@@ -28,8 +28,9 @@ function M.init()
         packpath,
       })
     end
-    print("Done. Please restart Neovim.")
   end
+  -- Ensure packard is in the runtime path
+  vim.cmd.packadd("packard.nvim")
 end
 
 return M

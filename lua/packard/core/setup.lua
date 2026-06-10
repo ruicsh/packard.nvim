@@ -204,6 +204,17 @@ function M.setup(opts, ctx)
   Utils._debug = opts.debug or false
 
   ctx._bootstrap()
+
+  -- Clean up old bootstrap path if it exists (migration from pack/packard/start/ -> pack/core/opt/)
+  if opts.self_management ~= false then
+    local old_path = vim.fn.stdpath("data") .. "/site/pack/packard/start/packard.nvim"
+    local new_path = Utils.get_plugin_path("packard.nvim")
+    if vim.fn.isdirectory(old_path) == 1 and vim.fn.isdirectory(new_path) == 1 then
+      vim.fn.delete(old_path, "rf")
+      vim.notify("packard: removed old bootstrap copy at pack/packard/start/packard.nvim", vim.log.levels.INFO)
+    end
+  end
+
   ctx._setup_eager_load()
   -- ADR-011: colorscheme autoload — must run after eager load so any
   -- already-loaded colorscheme plugins are known to getcompletion.

@@ -64,7 +64,7 @@ end
 local original_isdirectory = vim.fn.isdirectory
 --[[@diagnostic disable-next-line: duplicate-set-field]]
 vim.fn.isdirectory = function(path)
-  if path:match("packard%.nvim") then
+  if path == vim.fn.stdpath("data") .. "/site/pack/core/opt/packard.nvim" then
     return 1
   end
   if path:match("core/opt/repo") then
