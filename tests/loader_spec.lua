@@ -261,3 +261,175 @@ Helpers.describe("Loader eager loading", function()
   packard._bootstrap = original_bootstrap
   vim.cmd.packadd = original_packadd
 end)
+
+Helpers.describe("_with_silent_cmd (via load_and_config)", function()
+  local Git = require("packard.git")
+  --[[@diagnostic disable-next-line: duplicate-set-field]]
+  Git.get_default_branch = function()
+    return "main"
+  end
+  --[[@diagnostic disable-next-line: duplicate-set-field]]
+  Git.check_network = function()
+    return true
+  end
+
+  local original_bootstrap = packard._bootstrap
+  packard._bootstrap = function() end
+
+  -- Spy on vim.cmd: record all string calls, forward sub-commands to original
+  local original_cmd = vim.cmd
+  local string_calls = {}
+
+  local spy_cmd = setmetatable({}, {
+    __call = function(_, s, opts)
+      if type(s) == "string" then
+        table.insert(string_calls, s)
+      end
+      return original_cmd(s, opts)
+    end,
+    __index = function(_, k)
+      return original_cmd[k]
+    end,
+    __newindex = function(_, k, v)
+      original_cmd[k] = v
+    end,
+  })
+
+  vim.cmd = spy_cmd
+
+  -- Mock packadd (needed by load_and_config for non-local plugins)
+  original_cmd.packadd = function(opts)
+    if type(opts) == "table" and opts.args then
+      -- no-op, just prevent errors
+    end
+  end
+
+  local function clear_calls()
+    string_calls = {}
+  end
+
+  -- 1. Explicit config wrapping
+  Helpers.it("wraps vim.cmd string calls with silent! in explicit config", function()
+    clear_calls()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "user/explicit",
+          config = function()
+            vim.cmd("echo 'hello'")
+          end,
+        },
+      },
+    })
+    Helpers.expect(#string_calls).to_be(1)
+    Helpers.expect(string_calls[1]).to_be("silent! echo 'hello'")
+  end)
+
+  -- 2. Auto-setup wrapping
+  Helpers.it("wraps vim.cmd string calls with silent! in auto-setup", function()
+    clear_calls()
+    -- Preload a mock module so require("mock_auto_setup") works
+    package.loaded["mock_auto_setup"] = {
+      setup = function(opts)
+        vim.cmd("echo 'auto setup'")
+      end,
+    }
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "user/auto-test",
+          main = "mock_auto_setup",
+          opts = { key = "value" },
+          config = true,
+        },
+      },
+    })
+    Helpers.expect(#string_calls).to_be(1)
+    Helpers.expect(string_calls[1]).to_be("silent! echo 'auto setup'")
+    package.loaded["mock_auto_setup"] = nil
+  end)
+
+  -- 3. No double-wrapping
+  Helpers.it("does not double-wrap already-silent commands", function()
+    clear_calls()
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "user/double",
+          config = function()
+            vim.cmd("silent! echo 'no double'")
+          end,
+        },
+      },
+    })
+    Helpers.expect(#string_calls).to_be(1)
+    Helpers.expect(string_calls[1]).to_be("silent! echo 'no double'")
+  end)
+
+  -- 4. vim.cmd restored after config completes
+  Helpers.it("restores vim.cmd after config completes", function()
+    clear_calls()
+    local cmd_before = vim.cmd
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "user/restore",
+          config = function()
+            vim.cmd("echo 'run'")
+          end,
+        },
+      },
+    })
+    local cmd_after = vim.cmd
+    Helpers.expect(cmd_after).to_be(cmd_before)
+  end)
+
+  -- 5. vim.cmd restored even when config throws
+  Helpers.it("restores vim.cmd even when config throws", function()
+    clear_calls()
+    local cmd_before = vim.cmd
+    local ok, err = pcall(packard.setup, {
+      self_management = false,
+      plugins = {
+        {
+          "user/throws",
+          config = function()
+            vim.cmd("echo 'before error'")
+            error("plugin config failed")
+          end,
+        },
+      },
+    })
+    -- setup should have failed
+    Helpers.expect(ok).to_be(false)
+    -- vim.cmd should still be restored
+    local cmd_after = vim.cmd
+    Helpers.expect(cmd_after).to_be(cmd_before)
+  end)
+
+  -- 6. vim.cmd sub-commands preserved inside config
+  Helpers.it("preserves vim.cmd sub-commands like packadd", function()
+    clear_calls()
+    local packadd_type = nil
+    packard.setup({
+      self_management = false,
+      plugins = {
+        {
+          "user/subcmd",
+          config = function()
+            packadd_type = type(vim.cmd.packadd)
+          end,
+        },
+      },
+    })
+    Helpers.expect(packadd_type).to_be("function")
+  end)
+
+  -- Restore
+  packard._bootstrap = original_bootstrap
+  vim.cmd = original_cmd
+end)

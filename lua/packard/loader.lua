@@ -21,6 +21,36 @@ local function _debug_msg(fmt, ...)
   print(string.format(fmt, ...))
 end
 
+---Execute a function with vim.cmd output suppressed.
+---Prevents plugins from flashing commands (e.g. `:highlight`) on the
+---command line during setup. Already-silent commands are left untouched.
+---Uses a metatable proxy to preserve vim.cmd's dual nature (callable +
+---sub-commands like vim.cmd.packadd).
+local function _with_silent_cmd(fn, ...)
+  local _cmd = vim.cmd
+  local proxy
+  proxy = setmetatable({}, {
+    __call = function(_, s, opts)
+      if type(s) == "string" and not s:match("^%s*silent!?%s") then
+        return _cmd("silent! " .. s, opts)
+      end
+      return _cmd(s, opts)
+    end,
+    __index = function(_, k)
+      return _cmd[k]
+    end,
+    __newindex = function(_, k, v)
+      _cmd[k] = v
+    end,
+  })
+  vim.cmd = proxy
+  local ok, err = pcall(fn, ...)
+  vim.cmd = _cmd
+  if not ok then
+    error(err)
+  end
+end
+
 ---Resolve path relative to stdpath('config') if relative
 ---@param path string
 ---@return string
@@ -238,7 +268,7 @@ function Loader.load_and_config(plugin, plugins)
   -- Run config function if defined, or auto-setup
   if type(plugin.config) == "function" then
     _debug_msg("[packard] calling explicit config for '%s'", plugin.name)
-    plugin.config(plugin, opts or {})
+    _with_silent_cmd(plugin.config, plugin, opts or {})
   elseif plugin.config == true or (plugin.config == nil and opts ~= nil) then
     local modname = Loader._derive_modname(plugin)
     _debug_msg("[packard] auto-config: requiring '%s' for '%s'", modname, plugin.name)
@@ -248,7 +278,7 @@ function Loader.load_and_config(plugin, plugins)
     end
     if ok and type(mod) == "table" and type(mod.setup) == "function" then
       _debug_msg("[packard] auto-config: calling '%s'.setup()", modname)
-      mod.setup(opts or {})
+      _with_silent_cmd(mod.setup, opts or {})
     end
   end
 end
