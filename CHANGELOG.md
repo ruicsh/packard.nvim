@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1](https://github.com/ruicsh/packard.nvim/compare/v0.5.0...v0.5.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* **bootstrap:** stop pinning plugins to lockfile SHA ([1099e7a](https://github.com/ruicsh/packard.nvim/commit/1099e7a37825f180a8ec593aa5b4c2999937d1b5))
+
 ## [0.5.0](https://github.com/ruicsh/packard.nvim/compare/v0.4.1...v0.5.0) (2026-06-11)
 
 
