@@ -136,10 +136,41 @@ return function(UI)
       plugin_by_repo[p.owner_repo] = p
     end
 
+    -- Helper: compute abbreviated age from discovered_at timestamp.
+    -- discovered_at is ISO 8601 UTC (ends in Z).  os.time({...}) interprets
+    -- fields as LOCAL time, so we adjust by the timezone offset to get an
+    -- accurate UTC→UTC diff regardless of the local timezone.
+    local function compute_age(discovered_at)
+      if not discovered_at or type(discovered_at) ~= "string" then
+        return ""
+      end
+      local y, mo, d, h, mi, s = discovered_at:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)Z")
+      if not y then
+        return ""
+      end
+      local tz_offset = os.time() - os.time(os.date("!*t"))
+      local local_ts = os.time({
+        year = tonumber(y) or 0,
+        month = tonumber(mo) or 1,
+        day = tonumber(d) or 1,
+        hour = tonumber(h) or 0,
+        min = tonumber(mi) or 0,
+        sec = tonumber(s) or 0,
+        isdst = false,
+      })
+      local utc_ts = local_ts + tz_offset
+      local diff = os.time() - utc_ts
+      if diff < 0 then
+        return ""
+      end
+      return UI._format_age_abbreviated(diff)
+    end
+
     -- Default column widths; expand dynamically if content is wider
     local max_name_len = 26
+    local max_age_len = 7
     local all_pending = vim.tbl_extend("force", status.eligible, status.cooldown)
-    for owner_repo, _ in pairs(all_pending) do
+    for owner_repo, entry in pairs(all_pending) do
       local name_display = owner_repo
       local p = plugin_by_repo[owner_repo]
       if p then
@@ -151,6 +182,8 @@ return function(UI)
         end
       end
       max_name_len = math.max(max_name_len, vim.fn.strdisplaywidth(name_display))
+      local age = compute_age(entry.discovered_at)
+      max_age_len = math.max(max_age_len, vim.fn.strdisplaywidth(age))
     end
 
     local function render_section(title, items, icon)
@@ -161,7 +194,7 @@ return function(UI)
       table.sort(keys)
 
       table.insert(lines, string.format("  %s (%d)", title, #keys))
-      local fmt = string.format("    %%s %%-%ds  %%-10s  %%-8s  %%-22s  %%-10s", max_name_len)
+      local fmt = string.format("    %%s %%-%ds  %%-10s  %%-8s  %%-22s  %%-%ds  %%-10s", max_name_len, max_age_len)
       for _, owner_repo in ipairs(keys) do
         local entry = items[owner_repo]
         local plugin_name = owner_repo:match("/([^/]+)$")
@@ -182,6 +215,7 @@ return function(UI)
           or "Eligible now"
 
         local target_display = entry.tag or entry.commit:sub(1, 7)
+        local age_text = compute_age(entry.discovered_at)
 
         table.insert(
           lines,
@@ -192,6 +226,7 @@ return function(UI)
             target_display,
             UI.get_pending_risk(owner_repo),
             cooldown_text,
+            age_text,
             installed:sub(1, 7)
           )
         )

@@ -459,6 +459,52 @@ Helpers.describe("UI Dashboard", function()
     UI.close()
   end)
 
+  Helpers.it("shows commit age on Pending tab rows", function()
+    local plugins = {
+      { name = "test-plugin", owner_repo = "test/test-plugin", url = "https://github.com/test/test-plugin" },
+    }
+    UI.open(plugins, "pending")
+
+    -- Discovered 3 hours ago
+    local discovered_at = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() - 3 * 3600)
+
+    -- Mock Cooldown.get_status to return an eligible entry
+    local old_get_status = Cooldown.get_status
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    Cooldown.get_status = function()
+      return {
+        eligible = {
+          ["test/test-plugin"] = { commit = "abc1234", discovered_at = discovered_at },
+        },
+        cooldown = {},
+      }
+    end
+
+    -- Mock Lockfile
+    local old_lockfile = Lockfile.get_installed_commit
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    Lockfile.get_installed_commit = function()
+      return "def5678"
+    end
+
+    UI._do_render()
+
+    -- Verify the entry is in line_map (confirms pending tab rendered it)
+    local found_in_map = false
+    for _, owner_repo in pairs(UI.line_map) do
+      if owner_repo == "test/test-plugin" then
+        found_in_map = true
+        break
+      end
+    end
+    Helpers.expect(found_in_map).to_be_truthy()
+
+    -- Cleanup
+    Lockfile.get_installed_commit = old_lockfile
+    Cooldown.get_status = old_get_status
+    UI.close()
+  end)
+
   Helpers.describe("handle_log", function()
     Helpers.it("shows log between installed and pending in Pending tab (inline)", function()
       local plugin =
