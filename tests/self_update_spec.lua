@@ -391,6 +391,120 @@ Helpers.describe("Self-management update flow", function()
     vim.pack.update = original_pack_update
     UI.close()
   end)
+
+  Helpers.it("warns and preserves queue when vim.pack.update throws an error", function()
+    -- 1. Setup with self_management = true
+    packard.setup({
+      plugins = { "user/repo" },
+      defaults = { minimum_release_age = 0 },
+      self_management = true,
+    })
+
+    -- 2. Pre-populate lockfile with old commits
+    local lock_path = vim.fs.joinpath(vim.fn.stdpath("config"), "nvim-pack-lock.json")
+    mock_files[lock_path] = vim.fn.json_encode({
+      plugins = {
+        ["packard.nvim"] = { rev = "old-sha" },
+        ["repo"] = { rev = "old-sha" },
+      },
+    })
+    local Lockfile = require("packard.lockfile")
+    Lockfile.invalidate()
+
+    -- 3. Check for updates to populate the queue
+    packard.check()
+
+    local State = require("packard.state")
+    local state = State.read()
+    Helpers.expect(state.queue["ruicsh/packard.nvim"] ~= nil).to_be_truthy()
+    Helpers.expect(state.queue["ruicsh/packard.nvim"].commit).to_be("sha-new")
+
+    -- 4. Override vim.pack.update to THROW — pcall catches it, update_ok = false
+    local original_pack_update = vim.pack.update
+    vim.pack.update = function()
+      error("simulated update failure")
+    end
+
+    -- 5. Open UI and try to approve packard's pending update
+    local UI = require("packard.ui")
+    UI.open(packard.plugins, "pending")
+
+    -- Mock vim.fn.confirm to return 1 (Yes) for approval
+    local confirm_calls = {}
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function(msg)
+      table.insert(confirm_calls, msg)
+      if msg:match("Restart Neovim") then
+        return 2 -- Later
+      end
+      return 1 -- Yes
+    end
+
+    UI._do_render()
+    local target_line = 0
+    for line, owner_repo in pairs(UI.line_map) do
+      if owner_repo == "ruicsh/packard.nvim" then
+        target_line = line
+        break
+      end
+    end
+    Helpers.expect(target_line > 0).to_be_truthy()
+    vim.api.nvim_win_set_cursor(UI.win, { target_line, 0 })
+
+    -- Track print output to verify error vs "approved"
+    local print_output = {}
+    local original_print = print
+    print = function(...)
+      table.insert(print_output, table.concat({ ... }, " "))
+    end
+
+    UI.handle_approve()
+
+    -- 6. Verify queue is PRESERVED (not dequeued) because update failed
+    state = State.read()
+    Helpers.expect(state.queue["ruicsh/packard.nvim"] ~= nil).to_be_truthy()
+    Helpers.expect(state.queue["ruicsh/packard.nvim"].commit).to_be("sha-new")
+
+    -- 7. Verify both error messages were printed
+    local saw_update_failed = false
+    local saw_command_failed = false
+    for _, msg in ipairs(print_output) do
+      if msg:match("update failed") then
+        saw_update_failed = true
+      end
+      if msg:match("update command failed") then
+        saw_command_failed = true
+      end
+    end
+    Helpers.expect(saw_update_failed).to_be(true)
+    Helpers.expect(saw_command_failed).to_be(true)
+
+    -- 8. Verify "approved" was NOT printed
+    local saw_approved = false
+    for _, msg in ipairs(print_output) do
+      if msg:match("approved") then
+        saw_approved = true
+        break
+      end
+    end
+    Helpers.expect(saw_approved).to_be(false)
+
+    -- 9. Verify restart prompt was NOT shown (update didn't complete)
+    local saw_restart = false
+    for _, msg in ipairs(confirm_calls) do
+      if msg:match("Restart Neovim") then
+        saw_restart = true
+        break
+      end
+    end
+    Helpers.expect(saw_restart).to_be(false)
+
+    -- Restore
+    print = original_print
+    vim.fn.confirm = original_confirm
+    vim.pack.update = original_pack_update
+    UI.close()
+  end)
 end)
 
 -- Restore global mocks
