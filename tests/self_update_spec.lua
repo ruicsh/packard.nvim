@@ -244,6 +244,148 @@ Helpers.describe("Self-management update flow", function()
     vim.fn.confirm = original_confirm
     UI.close()
   end)
+
+  Helpers.it("warns and preserves queue when vim.pack.update does not update lockfile", function()
+    -- 1. Setup with self_management = true
+    packard.setup({
+      plugins = { "user/repo" },
+      defaults = { minimum_release_age = 0 },
+      self_management = true,
+    })
+
+    -- 2. Pre-populate lockfile with old commits
+    local lock_path = vim.fs.joinpath(vim.fn.stdpath("config"), "nvim-pack-lock.json")
+    mock_files[lock_path] = vim.fn.json_encode({
+      plugins = {
+        ["packard.nvim"] = { rev = "old-sha" },
+        ["repo"] = { rev = "old-sha" },
+      },
+    })
+    local Lockfile = require("packard.lockfile")
+    Lockfile.invalidate()
+
+    -- 3. Check for updates to populate the queue
+    packard.check()
+
+    local State = require("packard.state")
+    local state = State.read()
+    Helpers.expect(state.queue["ruicsh/packard.nvim"] ~= nil).to_be_truthy()
+    Helpers.expect(state.queue["ruicsh/packard.nvim"].commit).to_be("sha-new")
+
+    -- 4. Override vim.pack.update to NOT update the lockfile but still fire PackChanged
+    local original_pack_update = vim.pack.update
+    vim.pack.update = function(opts)
+      update_called_with = opts
+      local names = type(opts) == "table" and opts or {}
+      for _, name in ipairs(names) do
+        vim.api.nvim_exec_autocmds("PackChanged", {
+          pattern = name,
+          data = {
+            active = true,
+            kind = "update",
+            spec = { name = name },
+            path = vim.fn.stdpath("data") .. "/site/pack/core/opt/" .. name,
+          },
+        })
+      end
+    end
+
+    -- 5. Open UI and approve packard's pending update
+    local UI = require("packard.ui")
+    UI.open(packard.plugins, "pending")
+
+    -- Mock vim.fn.confirm to approve (return 1 for approve, 2 for restart)
+    local confirm_calls = {}
+    local original_confirm = vim.fn.confirm
+    vim.fn.confirm = function(msg)
+      table.insert(confirm_calls, msg)
+      if msg:match("Restart Neovim") then
+        return 2 -- Later
+      end
+      return 1 -- Yes
+    end
+
+    UI._do_render()
+    local target_line = 0
+    for line, owner_repo in pairs(UI.line_map) do
+      if owner_repo == "ruicsh/packard.nvim" then
+        target_line = line
+        break
+      end
+    end
+    Helpers.expect(target_line > 0).to_be_truthy()
+    vim.api.nvim_win_set_cursor(UI.win, { target_line, 0 })
+
+    update_called_with = nil
+
+    -- Track print output to verify warning vs "approved"
+    local print_output = {}
+    local original_print = print
+    print = function(...)
+      table.insert(print_output, table.concat({ ... }, " "))
+    end
+
+    UI.handle_approve()
+
+    -- 6. Verify vim.pack.update was called
+    Helpers.expect(update_called_with ~= nil).to_be_truthy()
+    local found_in_update = false
+    for _, name in ipairs(update_called_with or {}) do
+      if name == "packard.nvim" then
+        found_in_update = true
+        break
+      end
+    end
+    Helpers.expect(found_in_update).to_be(true)
+
+    -- 7. Verify queue is PRESERVED (not dequeued) because lockfile didn't change
+    state = State.read()
+    Helpers.expect(state.queue["ruicsh/packard.nvim"] ~= nil).to_be_truthy()
+    Helpers.expect(state.queue["ruicsh/packard.nvim"].commit).to_be("sha-new")
+
+    -- 8. Verify update_log is unchanged — no new entry was added (only the first
+    --    test's entry persists because state carries over between tests).
+    Helpers.expect(state.update_log["ruicsh/packard.nvim"] ~= nil).to_be_truthy()
+    Helpers.expect(#state.update_log["ruicsh/packard.nvim"]).to_be(1)
+    Helpers.expect(state.update_log["ruicsh/packard.nvim"][1].from).to_be("old-sha")
+    Helpers.expect(state.update_log["ruicsh/packard.nvim"][1].to).to_be("sha-new")
+
+    -- 9. Verify "approved" was NOT printed
+    local saw_approved = false
+    for _, msg in ipairs(print_output) do
+      if msg:match("approved") then
+        saw_approved = true
+        break
+      end
+    end
+    Helpers.expect(saw_approved).to_be(false)
+
+    -- 10. Verify a warning was printed about the lockfile not changing
+    local saw_warning = false
+    for _, msg in ipairs(print_output) do
+      if msg:match("unchanged") or msg:match("lockfile") then
+        saw_warning = true
+        break
+      end
+    end
+    Helpers.expect(saw_warning).to_be(true)
+
+    -- 11. Verify restart prompt was NOT shown (lockfile didn't change)
+    local saw_restart = false
+    for _, msg in ipairs(confirm_calls) do
+      if msg:match("Restart Neovim") then
+        saw_restart = true
+        break
+      end
+    end
+    Helpers.expect(saw_restart).to_be(false)
+
+    -- Restore
+    print = original_print
+    vim.fn.confirm = original_confirm
+    vim.pack.update = original_pack_update
+    UI.close()
+  end)
 end)
 
 -- Restore global mocks

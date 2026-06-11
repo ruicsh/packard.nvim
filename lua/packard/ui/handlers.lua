@@ -85,32 +85,36 @@ return function(UI)
       -- Read lockfile to get the new commit
       Lockfile.invalidate()
       local new_commit = Lockfile.get_installed_commit(plugin_name)
+      local lockfile_changed = old_commit and new_commit and old_commit ~= new_commit
 
-      -- Log the update only if the PackChanged autocmd hasn't already.
-      -- The autocmd fires synchronously during vim.pack.update() and may
-      -- have already logged this transition and dequeued the plugin.
-      if old_commit and new_commit and old_commit ~= new_commit then
+      if lockfile_changed then
+        -- Log the update only if the PackChanged autocmd hasn't already.
+        -- The autocmd fires synchronously during vim.pack.update() and may
+        -- have already logged this transition and dequeued the plugin.
         local s = State.read()
         local logs = s.update_log[owner_repo] or {}
         local already_logged = #logs > 0 and logs[1].from == old_commit and logs[1].to == new_commit
         if not already_logged then
           State.log_update(owner_repo, old_commit, new_commit)
         end
-      end
 
-      -- Dequeue from pending (idempotent — autocmd may have already done this)
-      State.dequeue(owner_repo)
+        -- Dequeue from pending (idempotent — autocmd may have already done this)
+        State.dequeue(owner_repo)
 
-      print("packard: approved " .. owner_repo)
+        print("packard: approved " .. owner_repo)
 
-      -- Self-update: prompt to restart so new code takes effect
-      if owner_repo == "ruicsh/packard.nvim" then
-        --[[@diagnostic disable-next-line: redundant-parameter]]
-        local restart =
-          vim.fn.confirm("packard has been updated. Restart Neovim to use the new version?", "&Restart\n&Later", 2)
-        if restart == 1 then
-          vim.cmd("restart")
+        -- Self-update: prompt to restart so new code takes effect
+        if owner_repo == "ruicsh/packard.nvim" then
+          --[[@diagnostic disable-next-line: redundant-parameter]]
+          local restart =
+            vim.fn.confirm("packard has been updated. Restart Neovim to use the new version?", "&Restart\n&Later", 2)
+          if restart == 1 then
+            vim.cmd("restart")
+          end
         end
+      else
+        -- Lockfile unchanged — update may not have taken effect
+        print("packard: lockfile unchanged for " .. owner_repo .. " — update may not have persisted")
       end
     else
       print("packard: update command failed for " .. owner_repo)
