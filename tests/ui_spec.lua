@@ -505,6 +505,63 @@ Helpers.describe("UI Dashboard", function()
     UI.close()
   end)
 
+  Helpers.it("populates AI cache from cached results for eligible and cooldown entries", function()
+    local plugins = {
+      { name = "eligible-plugin", owner_repo = "test/eligible", url = "https://github.com/test/eligible" },
+      { name = "cooldown-plugin", owner_repo = "test/cooldown", url = "https://github.com/test/cooldown" },
+    }
+    UI.open(plugins, "pending")
+
+    -- Mock Cooldown.get_status with one eligible + one cooldown entry
+    local old_get_status = Cooldown.get_status
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    Cooldown.get_status = function()
+      return {
+        eligible = {
+          ["test/eligible"] = { commit = "abc1234", discovered_at = "" },
+        },
+        cooldown = {
+          ["test/cooldown"] = { commit = "def5678", discovered_at = "" },
+        },
+      }
+    end
+
+    -- Mock Lockfile to return a non-nil installed commit
+    local old_lockfile = Lockfile.get_installed_commit
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    Lockfile.get_installed_commit = function()
+      return "installed-sha"
+    end
+
+    -- Mock State.get_ai_cache to return cached data
+    local old_ai_cache = State.get_ai_cache
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    State.get_ai_cache = function()
+      return { risk = "low", summary = "mock summary" }
+    end
+
+    UI._do_render()
+
+    -- Verify eligible entry was populated from AI cache
+    local eligible = UI.ai_results["test/eligible"]
+    Helpers.expect(eligible ~= nil).to_be_truthy()
+    Helpers.expect(eligible.state).to_be("result")
+    Helpers.expect(eligible.data.risk).to_be("low")
+    Helpers.expect(eligible.data.summary).to_be("mock summary")
+
+    -- Verify cooldown entry was populated from AI cache
+    local cooldown_result = UI.ai_results["test/cooldown"]
+    Helpers.expect(cooldown_result ~= nil).to_be_truthy()
+    Helpers.expect(cooldown_result.state).to_be("result")
+    Helpers.expect(cooldown_result.data.risk).to_be("low")
+
+    -- Cleanup
+    State.get_ai_cache = old_ai_cache
+    Lockfile.get_installed_commit = old_lockfile
+    Cooldown.get_status = old_get_status
+    UI.close()
+  end)
+
   Helpers.describe("handle_log", function()
     Helpers.it("shows log between installed and pending in Pending tab (inline)", function()
       local plugin =
