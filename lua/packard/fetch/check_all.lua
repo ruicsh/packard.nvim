@@ -83,7 +83,7 @@ local function check_all(plugins, on_progress)
   local resolved_branches = {}
   for i, job in pairs(branch_jobs) do
     local obj = job:wait(5000)
-    if obj.code == 0 then
+    if obj and obj.code == 0 then
       for line in obj.stdout:gmatch("[^\r\n]+") do
         local branch = line:match("^ref: refs/heads/(%S+)%s+HEAD$")
         if branch then
@@ -152,7 +152,7 @@ local function check_all(plugins, on_progress)
       if obj.code == 0 then
         if plugin.version and tag_jobs[i] then
           local tag_obj = tag_jobs[i]:wait(5000)
-          if tag_obj.code == 0 then
+          if tag_obj and tag_obj.code == 0 then
             local tags = Git.parse_ls_remote_tags(tag_obj.stdout)
             local range = Semver.to_range(plugin.version)
             local best = range and Semver.pick_best(tags, range) or nil
