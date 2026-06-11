@@ -105,30 +105,22 @@ return function(UI)
     end
 
     -- Pre-populate risk from AI cache for pending plugins that have been reviewed before
-    for owner_repo, entry in pairs(status.eligible) do
-      if not UI.ai_results[owner_repo] then
-        local plugin_name = owner_repo:match("/([^/]+)$")
-        local from = Lockfile.get_installed_commit(plugin_name)
-        if from then
-          local cached = State.get_ai_cache(owner_repo, from, entry.commit)
-          if cached then
-            UI.ai_results[owner_repo] = { state = "result", data = cached }
+    local function populate_ai_cache(entries)
+      for owner_repo, entry in pairs(entries) do
+        if not UI.ai_results[owner_repo] then
+          local plugin_name = owner_repo:match("/([^/]+)$")
+          local from = Lockfile.get_installed_commit(plugin_name)
+          if from then
+            local cached = State.get_ai_cache(owner_repo, from, entry.commit)
+            if cached then
+              UI.ai_results[owner_repo] = { state = "result", data = cached }
+            end
           end
         end
       end
     end
-    for owner_repo, entry in pairs(status.cooldown) do
-      if not UI.ai_results[owner_repo] then
-        local plugin_name = owner_repo:match("/([^/]+)$")
-        local from = Lockfile.get_installed_commit(plugin_name)
-        if from then
-          local cached = State.get_ai_cache(owner_repo, from, entry.commit)
-          if cached then
-            UI.ai_results[owner_repo] = { state = "result", data = cached }
-          end
-        end
-      end
-    end
+    populate_ai_cache(status.eligible)
+    populate_ai_cache(status.cooldown)
 
     -- Build a lookup table so we don't O(n*m) scan UI.plugins for each pending entry
     local plugin_by_repo = {}
@@ -166,21 +158,28 @@ return function(UI)
       return UI._format_age_abbreviated(diff)
     end
 
+    -- Helper: build display name with dependency/conditional annotations
+    local function display_name(owner_repo, plugin)
+      if not plugin then
+        return owner_repo
+      end
+      local name = owner_repo
+      if plugin.is_dependency then
+        name = name .. " [dep]"
+      end
+      if plugin._cond then
+        name = name .. " [cond]"
+      end
+      return name
+    end
+
     -- Default column widths; expand dynamically if content is wider
     local max_name_len = 26
     local max_age_len = 7
     local all_pending = vim.tbl_extend("force", status.eligible, status.cooldown)
     for owner_repo, entry in pairs(all_pending) do
-      local name_display = owner_repo
       local p = plugin_by_repo[owner_repo]
-      if p then
-        if p.is_dependency then
-          name_display = name_display .. " [dep]"
-        end
-        if p._cond then
-          name_display = name_display .. " [cond]"
-        end
-      end
+      local name_display = display_name(owner_repo, p)
       max_name_len = math.max(max_name_len, vim.fn.strdisplaywidth(name_display))
       local age = compute_age(entry.discovered_at)
       max_age_len = math.max(max_age_len, vim.fn.strdisplaywidth(age))
@@ -202,14 +201,7 @@ return function(UI)
 
         -- Lookup plugin from the hash table built above
         local plugin = plugin_by_repo[owner_repo]
-
-        local name_display = owner_repo
-        if plugin and plugin.is_dependency then
-          name_display = name_display .. " [dep]"
-        end
-        if plugin and plugin._cond then
-          name_display = name_display .. " [cond]"
-        end
+        local name_display = display_name(owner_repo, plugin)
 
         local cooldown_text = entry.remaining_days and string.format("%d days remaining", entry.remaining_days)
           or "Eligible now"
