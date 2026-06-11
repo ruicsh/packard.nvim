@@ -105,9 +105,17 @@ return function(UI)
 
         -- Self-update: prompt to restart so new code takes effect
         if owner_repo == "ruicsh/packard.nvim" then
-          --[[@diagnostic disable-next-line: redundant-parameter]]
-          local restart =
-            vim.fn.confirm("packard has been updated. Restart Neovim to use the new version?", "&Restart\n&Later", 2)
+          --[[@diagnostic disable: redundant-parameter, need-check-nil]]
+          local restart = vim.fn.confirm(
+            string.format(
+              "packard updated: %s → %s. Restart Neovim to use the new version?",
+              old_commit:sub(1, 7),
+              new_commit:sub(1, 7)
+            ),
+            "&Restart\n&Later",
+            2
+          )
+          --[[@diagnostic enable: redundant-parameter, need-check-nil]]
           if restart == 1 then
             vim.cmd("restart")
           end

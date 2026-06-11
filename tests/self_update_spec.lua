@@ -230,15 +230,20 @@ Helpers.describe("Self-management update flow", function()
     Helpers.expect(state.update_log["ruicsh/packard.nvim"][1].from).to_be("old-sha")
     Helpers.expect(state.update_log["ruicsh/packard.nvim"][1].to).to_be("sha-new")
 
-    -- 9. Verify restart prompt was shown
+    -- 9. Verify restart prompt was shown with old→new SHAs
     local saw_restart = false
+    local saw_sha = false
     for _, msg in ipairs(confirm_calls) do
       if msg:match("Restart Neovim") then
         saw_restart = true
+        if msg:match("old%-sha") and msg:match("sha%-new") then
+          saw_sha = true
+        end
         break
       end
     end
     Helpers.expect(saw_restart).to_be(true)
+    Helpers.expect(saw_sha).to_be(true)
 
     -- Restore
     vim.fn.confirm = original_confirm
