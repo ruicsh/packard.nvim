@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/ruicsh/packard.nvim/compare/v0.4.1...v0.5.0) (2026-06-11)
+
+
+### Features
+
+* **ui:** add commit age column to Pending tab ([674d555](https://github.com/ruicsh/packard.nvim/commit/674d555cadaaae9ffe2b5ad8b1e1a6fbdbf5fa33))
+* **ui:** show old→new SHAs in self-update restart prompt ([04890ac](https://github.com/ruicsh/packard.nvim/commit/04890ac9ad3556e76945942b0b9e2c394bf0b25f))
+
+
+### Bug Fixes
+
+* **handlers:** guard dequeue on lockfile change in handle_approve ([ecded8b](https://github.com/ruicsh/packard.nvim/commit/ecded8bdf0b7c0ff6df23802c47bffcd37a9f685))
+
 ## [0.4.1](https://github.com/ruicsh/packard.nvim/compare/v0.4.0...v0.4.1) (2026-06-10)
 
 
