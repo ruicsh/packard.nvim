@@ -23,11 +23,7 @@ function M.bootstrap(ctx)
       data = plugin.spec.data, -- Pass through user data if any
     }
 
-    -- Priority: lockfile SHA > commit > tag > version > branch
-    local locked_sha = Lockfile.get_installed_commit(plugin.name)
-    if locked_sha then
-      pack_spec.version = locked_sha
-    elseif plugin.commit then
+    if plugin.commit then
       pack_spec.version = plugin.commit
     elseif plugin.tag then
       pack_spec.version = plugin.tag
