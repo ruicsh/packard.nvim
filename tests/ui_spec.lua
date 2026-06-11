@@ -562,6 +562,83 @@ Helpers.describe("UI Dashboard", function()
     UI.close()
   end)
 
+  Helpers.it("shows [dep] and [cond] annotations on Pending tab", function()
+    local plugins = {
+      { name = "dep-plugin", owner_repo = "a/dep", is_dependency = true, url = "https://github.com/a/dep" },
+      { name = "cond-plugin", owner_repo = "b/cond", _cond = true, url = "https://github.com/b/cond" },
+      {
+        name = "both-plugin",
+        owner_repo = "c/both",
+        is_dependency = true,
+        _cond = true,
+        url = "https://github.com/c/both",
+      },
+      { name = "plain-plugin", owner_repo = "d/plain", url = "https://github.com/d/plain" },
+    }
+    UI.open(plugins, "pending")
+
+    -- Mock Cooldown with all 4 as eligible
+    local old_get_status = Cooldown.get_status
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    Cooldown.get_status = function()
+      return {
+        eligible = {
+          ["a/dep"] = { commit = "aaa1111", discovered_at = "" },
+          ["b/cond"] = { commit = "bbb2222", discovered_at = "" },
+          ["c/both"] = { commit = "ccc3333", discovered_at = "" },
+          ["d/plain"] = { commit = "ddd4444", discovered_at = "" },
+        },
+        cooldown = {},
+      }
+    end
+
+    -- Mock Lockfile to return a non-nil installed commit
+    local old_lockfile = Lockfile.get_installed_commit
+    --[[@diagnostic disable-next-line: duplicate-set-field]]
+    Lockfile.get_installed_commit = function()
+      return "installed"
+    end
+
+    UI._do_render()
+
+    local lines = vim.api.nvim_buf_get_lines(UI.buf, 0, -1, false)
+
+    local found_dep = false
+    local found_cond = false
+    local found_both_dep = false
+    local found_both_cond = false
+    local found_plain_without_suffix = false
+
+    for _, line in ipairs(lines) do
+      if line:match("a/dep") then
+        found_dep = line:match("%[dep%]") ~= nil
+      end
+      if line:match("b/cond") then
+        found_cond = line:match("%[cond%]") ~= nil
+      end
+      if line:match("c/both") then
+        found_both_dep = line:match("%[dep%]") ~= nil
+        found_both_cond = line:match("%[cond%]") ~= nil
+      end
+      if line:match("d/plain") then
+        local has_dep = line:match("%[dep%]") ~= nil
+        local has_cond = line:match("%[cond%]") ~= nil
+        found_plain_without_suffix = not has_dep and not has_cond
+      end
+    end
+
+    Helpers.expect(found_dep).to_be(true)
+    Helpers.expect(found_cond).to_be(true)
+    Helpers.expect(found_both_dep).to_be(true)
+    Helpers.expect(found_both_cond).to_be(true)
+    Helpers.expect(found_plain_without_suffix).to_be(true)
+
+    -- Cleanup
+    Lockfile.get_installed_commit = old_lockfile
+    Cooldown.get_status = old_get_status
+    UI.close()
+  end)
+
   Helpers.describe("handle_log", function()
     Helpers.it("shows log between installed and pending in Pending tab (inline)", function()
       local plugin =
